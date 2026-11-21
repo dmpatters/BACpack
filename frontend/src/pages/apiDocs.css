@@ -1,0 +1,56 @@
+/* Swagger UI on the design system's tokens: only token variables here, so
+   both themes follow. Every rule is scoped to the API Docs page. */
+/* Swagger's long schema names don't wrap: they scroll here, not the page. */
+.bp-apidocs { overflow-x: auto; }
+.bp-apidocs .swagger-ui,
+.bp-apidocs .swagger-ui .opblock-tag,
+.bp-apidocs .swagger-ui .opblock .opblock-summary-path,
+.bp-apidocs .swagger-ui .opblock .opblock-summary-description,
+.bp-apidocs .swagger-ui .parameter__name,
+.bp-apidocs .swagger-ui .parameter__type,
+.bp-apidocs .swagger-ui table thead tr th,
+.bp-apidocs .swagger-ui table thead tr td,
+.bp-apidocs .swagger-ui .response-col_status,
+.bp-apidocs .swagger-ui .model-title,
+.bp-apidocs .swagger-ui .model,
+.bp-apidocs .swagger-ui .prop-type,
+.bp-apidocs .swagger-ui .tab li,
+.bp-apidocs .swagger-ui label,
+.bp-apidocs .swagger-ui .markdown p,
+.bp-apidocs .swagger-ui .renderedMarkdown p { color: var(--text); font-family: var(--font-sans); }
+
+/* The page's own header says what this is; Swagger's title, version badges and
+   openapi.json link are left out (the page links the document itself). */
+.bp-apidocs .swagger-ui .information-container { display: none; }
+.bp-apidocs .swagger-ui .scheme-container { background: var(--surface); box-shadow: none; border: 1px solid var(--border); border-radius: var(--radius-md); }
+.bp-apidocs .swagger-ui .opblock { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: none; }
+.bp-apidocs .swagger-ui .opblock .opblock-summary { border-bottom-color: var(--border); }
+.bp-apidocs .swagger-ui .opblock .opblock-section-header { background: var(--surface-raised); box-shadow: none; }
+.bp-apidocs .swagger-ui .opblock-summary-method { border-radius: var(--radius-pill); font-family: var(--font-mono); min-width: 0; padding: var(--space-1) var(--space-3); }
+.bp-apidocs .swagger-ui .opblock.opblock-get .opblock-summary-method { background: var(--accent-soft); color: var(--accent); }
+.bp-apidocs .swagger-ui .opblock.opblock-post .opblock-summary-method { background: var(--ok-soft); color: var(--ok); }
+.bp-apidocs .swagger-ui .opblock.opblock-put .opblock-summary-method,
+.bp-apidocs .swagger-ui .opblock.opblock-patch .opblock-summary-method { background: var(--warn-soft); color: var(--warn); }
+.bp-apidocs .swagger-ui .opblock.opblock-delete .opblock-summary-method { background: var(--danger-soft); color: var(--danger); }
+.bp-apidocs .swagger-ui .opblock-tag { border-bottom-color: var(--border); }
+.bp-apidocs .swagger-ui .highlight-code,
+.bp-apidocs .swagger-ui .microlight,
+.bp-apidocs .swagger-ui .model-box,
+.bp-apidocs .swagger-ui section.models { background: var(--surface-sunken); color: var(--text); font-family: var(--font-mono); border-color: var(--border); }
+.bp-apidocs .swagger-ui input,
+.bp-apidocs .swagger-ui select,
+.bp-apidocs .swagger-ui textarea { background: var(--surface); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); }
+.bp-apidocs .swagger-ui .btn { background: var(--surface); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); box-shadow: none; }
+.bp-apidocs .swagger-ui .btn.execute { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.bp-apidocs .swagger-ui h4,
+.bp-apidocs .swagger-ui h5,
+.bp-apidocs .swagger-ui .opblock .opblock-section-header h4,
+.bp-apidocs .swagger-ui .opblock .tab-header .tab-item h4,
+.bp-apidocs .swagger-ui .opblock .tab-header .tab-item h4 span,
+.bp-apidocs .swagger-ui .opblock-title span { color: var(--text); }
+.bp-apidocs .swagger-ui .opblock-description-wrapper p,
+.bp-apidocs .swagger-ui .response-col_links i { color: var(--text-muted); }
+.bp-apidocs .swagger-ui .response-control-media-type__accept-message,
+.bp-apidocs .swagger-ui .response-control-media-type__accept-message code { color: var(--ok); }
+.bp-apidocs .swagger-ui svg:not(:root) { fill: currentColor; }
+.bp-apidocs .swagger-ui a { color: var(--accent); }

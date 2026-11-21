@@ -1,0 +1,6 @@
+blank_issues_enabled: false
+contact_links:
+  # The private advisory form itself, the direct route SECURITY.md describes.
+  - name: Report a security vulnerability
+    url: https://github.com/dmpatters/BACpack/security/advisories/new
+    about: Report a vulnerability privately, not in a public issue.

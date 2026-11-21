@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      // Picks the theme before first paint, so a light-theme user sees no dark
+      // flash. Same rule as initialTheme() in src/utils/theme.ts.
+      (function () {
+        var theme = null;
+        try {
+          theme = localStorage.getItem("bacpack-theme");
+        } catch (e) {}
+        if (theme !== "dark" && theme !== "light") {
+          try {
+            theme = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+          } catch (e) {
+            theme = "dark";
+          }
+        }
+        document.documentElement.setAttribute("data-theme", theme);
+      })();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BACpack</title>
+  </head>
+  <body class="bp-body bp-body--app">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

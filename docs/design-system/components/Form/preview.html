@@ -1,0 +1,44 @@
+<!-- @dsCard group="Forms" height=430 subtitle="Fieldset card with a field grid, checkbox and actions" -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body class="bp-body">
+  <form class="bp-form" onsubmit="return false">
+    <fieldset class="bp-fieldset">
+      <legend>Add connector</legend>
+      <div class="bp-stack">
+        <div class="bp-form-grid">
+          <div class="bp-field"><label class="bp-label" for="f-type">Type</label>
+            <select class="bp-select" id="f-type"><option>HTTP poll</option><option>BACnet</option></select></div>
+          <div class="bp-field"><label class="bp-label" for="f-name">Name</label>
+            <input class="bp-input" id="f-name" type="text" value="OpenMeteoWeather"></div>
+          <div class="bp-field"><label class="bp-label" for="f-url">URL</label>
+            <input class="bp-input bp-input--mono" id="f-url" type="text" placeholder="http://host/status"></div>
+        </div>
+        <div class="bp-form-grid">
+          <div class="bp-field"><label class="bp-label" for="f-poll">Poll interval (s)</label>
+            <input class="bp-input" id="f-poll" type="number" value="30"></div>
+          <div class="bp-field"><label class="bp-label" for="f-timeout">Timeout (s)</label>
+            <input class="bp-input" id="f-timeout" type="number" value="10"></div>
+          <div class="bp-field"><label class="bp-label" for="f-format">Response format</label>
+            <select class="bp-select" id="f-format"><option>JSON</option><option>Plain text</option></select></div>
+        </div>
+        <div class="bp-form-grid">
+          <div class="bp-field"><label class="bp-label" for="f-auth">Auth</label>
+            <select class="bp-select" id="f-auth"><option>None</option><option>Basic</option><option>Bearer</option></select></div>
+          <div class="bp-field"><label class="bp-label" for="f-user">Username (basic)</label>
+            <input class="bp-input" id="f-user" type="text"></div>
+          <div class="bp-field"><label class="bp-label" for="f-token">Token (bearer)</label>
+            <input class="bp-input" id="f-token" type="password" placeholder="unchanged">
+            <span class="bp-help">Leave blank to keep the saved token.</span></div>
+        </div>
+        <label class="bp-check"><input type="checkbox" checked> Verify TLS certificate</label>
+        <div class="bp-form-actions">
+          <button class="bp-btn bp-btn--primary" type="submit">Add connector</button>
+          <button class="bp-btn bp-btn--ghost" type="button">Cancel</button>
+        </div>
+      </div>
+    </fieldset>
+  </form>
+</body>
+</html>

@@ -1,0 +1,62 @@
+@import "tailwindcss";
+@import "./design-system/tokens.css";
+@import "./design-system/bundle.css";
+
+/* Tailwind is for layout utilities only (handoff decision A): the default
+   theme is cleared, so no palette colour, font size, radius or shadow
+   utility exists, and spacing resolves to the design tokens. tokens.css and
+   bundle.css stay unlayered so the bp- classes win over Tailwind's preflight
+   and the @layer rules below. */
+@theme {
+  --*: initial;
+  --spacing-0: 0px;
+  --spacing-1: var(--space-1);
+  --spacing-2: var(--space-2);
+  --spacing-3: var(--space-3);
+  --spacing-4: var(--space-4);
+  --spacing-5: var(--space-5);
+  --spacing-6: var(--space-6);
+  --spacing-7: var(--space-7);
+  --spacing-8: var(--space-8);
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+}
+
+/* Element defaults the design system leaves to the app; token variables only. */
+@layer base {
+  * { box-sizing: border-box; }
+
+  p { margin: 0 0 0.75rem; }
+  h2 { font-size: 1.1rem; font-weight: 600; margin-top: 2rem; }
+
+  code { background: var(--surface-raised); padding: 0.15rem 0.4rem; border-radius: 0.3rem; font-size: 0.85em; }
+
+  /* `overflow-wrap: normal` breaks only at UAX #14 opportunities such as `/`;
+     a query string joined by `&` has none, so a long connector URL would
+     widen the page into a sideways scroll. */
+  .url { overflow-wrap: anywhere; word-break: break-word; }
+
+  a { color: var(--accent); text-decoration: underline; }
+  a:hover { opacity: 0.85; }
+}
+
+@layer components {
+  /* Inside a form the grid gap spaces fieldsets; standing on the page, a form
+     or fieldset needs its own space from the table or text beside it. */
+  .bp-form:not(.bp-fieldset .bp-form),
+  .bp-fieldset:not(.bp-form .bp-fieldset, .bp-fieldset .bp-fieldset) {
+    margin-block: var(--space-5);
+  }
+  /* Stale live values: the controlling slot stops looking current too. */
+  .bp-prio-col--stale .bp-prio-col__row[aria-current="true"] {
+    background: var(--surface);
+    border-color: var(--border);
+    color: var(--text-muted);
+  }
+  /* A fieldset holding its form, or standing alone, stops where a form does. */
+  .bp-fieldset:not(.bp-form .bp-fieldset, .bp-fieldset .bp-fieldset) {
+    max-width: var(--form-max);
+  }
+}

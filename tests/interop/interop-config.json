@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "devices": [
+    {
+      "id": 599101,
+      "name": "IOP-1",
+      "description": "interop device one",
+      "location": "loopback",
+      "vendor_identifier": 999,
+      "vendor_name": "Interop Vendor",
+      "bind_address": "127.0.0.2/8:47820",
+      "network_role": "bbmd",
+      "bbmd_peers": ["127.0.0.2:47821"],
+      "objects": [
+        {"object_type": "analog-input", "instance_number": 1, "name": "IOP Temp", "units": "degreesCelsius",
+         "bacnet_writable": false, "start_value": "21.5"},
+        {"object_type": "analog-output", "instance_number": 1, "name": "IOP Damper", "units": "percent",
+         "relinquish_default": "10.0"},
+        {"object_type": "analog-value", "instance_number": 1, "name": "IOP Setpoint", "units": "degreesCelsius",
+         "relinquish_default": "20.0"},
+        {"object_type": "analog-value", "instance_number": 2, "name": "IOP Trended Value", "units": "percent",
+         "relinquish_default": "50.0", "trended": true, "trend_mode": "interval", "trend_interval_seconds": 1,
+         "trend_sample_cap": 1000, "trend_log_instance": 1, "trend_log_name": "IOP Trend Log"},
+        {"object_type": "binary-input", "instance_number": 1, "name": "IOP Status", "active_text": "On",
+         "inactive_text": "Off", "bacnet_writable": false, "start_value": "active"},
+        {"object_type": "binary-output", "instance_number": 1, "name": "IOP Fan", "active_text": "On",
+         "inactive_text": "Off", "relinquish_default": "inactive"},
+        {"object_type": "binary-value", "instance_number": 1, "name": "IOP Occupancy", "active_text": "Occupied",
+         "inactive_text": "Unoccupied", "relinquish_default": "inactive"},
+        {"object_type": "multi-state-value", "instance_number": 1, "name": "IOP Mode",
+         "state_text": ["Off", "Heat", "Cool"], "relinquish_default": "1"},
+        {"object_type": "schedule", "instance_number": 1, "name": "IOP Schedule", "schedule_value_type": "binary",
+         "schedule_default": "inactive",
+         "weekly_schedule": [
+           [{"time": "07:00", "value": "active"}, {"time": "18:00", "value": "inactive"}],
+           [{"time": "07:00", "value": "active"}, {"time": "18:00", "value": "inactive"}],
+           [{"time": "07:00", "value": "active"}, {"time": "18:00", "value": "inactive"}],
+           [{"time": "07:00", "value": "active"}, {"time": "18:00", "value": "inactive"}],
+           [{"time": "07:00", "value": "active"}, {"time": "18:00", "value": "inactive"}],
+           [],
+           []
+         ],
+         "exception_schedule": [
+           {"period": {"kind": "calendar-reference", "instance_number": 1}, "priority": 1,
+            "time_values": [{"time": "00:00", "value": "inactive"}]}
+         ],
+         "schedule_priority": 14,
+         "schedule_write_targets": [{"object_type": "binary-value", "instance_number": 1, "property_identifier": "presentValue"}]},
+        {"object_type": "calendar", "instance_number": 1, "name": "IOP Holidays",
+         "date_list": [
+           {"kind": "date", "month": 1, "day": 1},
+           {"kind": "date", "month": 7, "day": 4},
+           {"kind": "date", "month": 12, "day": 25}
+         ]},
+        {"object_type": "notification-class", "instance_number": 1, "name": "IOP Alarms",
+         "notification_recipient_list": [
+           {"recipient": {"kind": "device", "instance_number": 599102},
+            "valid_days": [true, true, true, true, true, true, true],
+            "from_time": "00:00", "to_time": "23:59",
+            "transitions": [true, true, true], "confirmed": false, "process_identifier": 1}
+         ]},
+        {"object_type": "analog-input", "instance_number": 2, "name": "IOP Hot Input", "units": "degreesCelsius",
+         "bacnet_writable": false, "start_value": "80.0",
+         "alarming_enabled": true, "notification_class_instance": 1, "alarm_notify_type": "alarm",
+         "alarm_high_limit": 70.0, "alarm_deadband": 1.0, "alarm_limit_enable": [false, true],
+         "alarm_time_delay": 0}
+      ]
+    },
+    {
+      "id": 599102,
+      "name": "IOP-2",
+      "description": "interop device two",
+      "location": "loopback",
+      "vendor_identifier": 999,
+      "vendor_name": "Interop Vendor",
+      "bind_address": "127.0.0.2/8:47821",
+      "network_role": "normal",
+      "objects": [
+        {"object_type": "analog-value", "instance_number": 1, "name": "IOP2 Value", "units": "percent",
+         "relinquish_default": "5.0"},
+        {"object_type": "binary-value", "instance_number": 1, "name": "IOP2 Flag", "active_text": "Yes",
+         "inactive_text": "No", "relinquish_default": "inactive"}
+      ]
+    }
+  ]
+}

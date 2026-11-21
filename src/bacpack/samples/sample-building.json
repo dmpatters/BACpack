@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "devices": [
+    {
+      "id": 4190001,
+      "name": "Sample AHU-1",
+      "description": "Sample air handler; a BBMD linked to the three sample VAVs",
+      "location": "Sample building",
+      "bind_address": null,
+      "network_role": "bbmd",
+      "bbmd_links": [4190101, 4190102, 4190103],
+      "objects": [
+        {"object_type": "analog-input", "instance_number": 1, "name": "Supply Air Temp", "units": "degreesFahrenheit", "bacnet_writable": false,
+         "simulation": {"kind": "sine", "center": 55.0, "amplitude": 3.0, "period_s": 600, "interval_s": 5, "decimals": 1},
+         "trended": true, "trend_mode": "interval", "trend_interval_seconds": 60, "trend_sample_cap": 1440, "trend_log_instance": 1},
+        {"object_type": "analog-input", "instance_number": 2, "name": "Return Air Temp", "units": "degreesFahrenheit", "bacnet_writable": false,
+         "simulation": {"kind": "random_walk", "start": 72.0, "low": 68.0, "high": 76.0, "max_step": 0.3, "interval_s": 5, "decimals": 1},
+         "trended": true, "trend_mode": "interval", "trend_interval_seconds": 60, "trend_sample_cap": 1440, "trend_log_instance": 2},
+        {"object_type": "analog-input", "instance_number": 3, "name": "Mixed Air Temp", "units": "degreesFahrenheit", "bacnet_writable": false,
+         "simulation": {"kind": "follow", "source": "analog-input:2", "scale": 0.85, "offset": 8.0, "noise": 0.2, "interval_s": 5, "decimals": 1}},
+        {"object_type": "analog-input", "instance_number": 4, "name": "Filter Differential Pressure", "units": "inchesOfWater", "bacnet_writable": false,
+         "description": "Rises past its high limit now and then, so the alarm fires",
+         "simulation": {"kind": "random_walk", "start": 0.9, "low": 0.2, "high": 1.6, "max_step": 0.1, "interval_s": 5, "decimals": 2},
+         "alarming_enabled": true, "notification_class_instance": 1, "alarm_notify_type": "alarm",
+         "alarm_high_limit": 1.2, "alarm_deadband": 0.1, "alarm_limit_enable": [false, true]},
+        {"object_type": "binary-output", "instance_number": 1, "name": "Supply Fan Command", "active_text": "On", "inactive_text": "Off", "relinquish_default": "active"},
+        {"object_type": "binary-input", "instance_number": 1, "name": "Supply Fan Status", "active_text": "On", "inactive_text": "Off", "bacnet_writable": false,
+         "simulation": {"kind": "square", "period_s": 300, "duty": 0.8}},
+        {"object_type": "analog-output", "instance_number": 1, "name": "Supply Fan VFD Speed", "units": "percent", "relinquish_default": "60.0"},
+        {"object_type": "analog-value", "instance_number": 1, "name": "Supply Air Temp Setpoint", "units": "degreesFahrenheit", "relinquish_default": "55.0"},
+        {"object_type": "binary-value", "instance_number": 1, "name": "Occupancy", "active_text": "Occupied", "inactive_text": "Unoccupied", "relinquish_default": "inactive",
+         "description": "Written by the occupancy schedule"},
+        {"object_type": "multi-state-value", "instance_number": 1, "name": "Unit Mode", "state_text": ["Off", "Heat", "Cool", "Economizer"], "relinquish_default": "1",
+         "simulation": {"kind": "cycle", "dwell_s": 60}},
+        {"object_type": "schedule", "instance_number": 1, "name": "Occupancy Schedule", "schedule_value_type": "binary", "schedule_default": "inactive",
+         "weekly_schedule": [
+           [{"time": "07:00", "value": "active"}, {"time": "18:00", "value": "inactive"}],
+           [{"time": "07:00", "value": "active"}, {"time": "18:00", "value": "inactive"}],
+           [{"time": "07:00", "value": "active"}, {"time": "18:00", "value": "inactive"}],
+           [{"time": "07:00", "value": "active"}, {"time": "18:00", "value": "inactive"}],
+           [{"time": "07:00", "value": "active"}, {"time": "18:00", "value": "inactive"}],
+           [],
+           []
+         ],
+         "exception_schedule": [
+           {"period": {"kind": "calendar-reference", "instance_number": 1}, "priority": 1, "time_values": [{"time": "00:00", "value": "inactive"}]}
+         ],
+         "schedule_priority": 14,
+         "schedule_write_targets": [{"object_type": "binary-value", "instance_number": 1, "property_identifier": "presentValue"}]},
+        {"object_type": "calendar", "instance_number": 1, "name": "Holidays",
+         "date_list": [
+           {"kind": "date", "month": 1, "day": 1},
+           {"kind": "date", "month": 7, "day": 4},
+           {"kind": "date", "month": 12, "day": 25}
+         ]},
+        {"object_type": "notification-class", "instance_number": 1, "name": "Sample alarms"}
+      ]
+    },
+    {
+      "id": 4190101,
+      "name": "Sample VAV-1",
+      "description": "Sample VAV box",
+      "location": "Sample building",
+      "bind_address": null,
+      "objects": [
+        {"object_type": "analog-input", "instance_number": 1, "name": "Zone Temp", "units": "degreesFahrenheit", "bacnet_writable": false,
+         "simulation": {"kind": "sine", "center": 72.0, "amplitude": 1.5, "period_s": 900, "phase_s": 0, "interval_s": 5, "decimals": 1},
+         "trended": true, "trend_mode": "interval", "trend_interval_seconds": 60, "trend_sample_cap": 1440, "trend_log_instance": 1},
+        {"object_type": "analog-value", "instance_number": 1, "name": "Zone Setpoint", "units": "degreesFahrenheit", "relinquish_default": "72.0"},
+        {"object_type": "analog-output", "instance_number": 1, "name": "Damper Position", "units": "percent", "relinquish_default": "30.0"},
+        {"object_type": "analog-input", "instance_number": 2, "name": "Airflow", "units": "cubicFeetPerMinute", "bacnet_writable": false,
+         "simulation": {"kind": "follow", "source": "analog-output:1", "scale": 8.0, "offset": 0.0, "noise": 10.0, "interval_s": 5, "decimals": 0}},
+        {"object_type": "binary-input", "instance_number": 1, "name": "Occupied", "active_text": "Occupied", "inactive_text": "Unoccupied", "bacnet_writable": false,
+         "simulation": {"kind": "square", "period_s": 600, "duty": 0.7, "phase_s": 0}}
+      ]
+    },
+    {
+      "id": 4190102,
+      "name": "Sample VAV-2",
+      "description": "Sample VAV box",
+      "location": "Sample building",
+      "bind_address": null,
+      "objects": [
+        {"object_type": "analog-input", "instance_number": 1, "name": "Zone Temp", "units": "degreesFahrenheit", "bacnet_writable": false,
+         "simulation": {"kind": "sine", "center": 72.0, "amplitude": 1.5, "period_s": 900, "phase_s": 300, "interval_s": 5, "decimals": 1},
+         "trended": true, "trend_mode": "interval", "trend_interval_seconds": 60, "trend_sample_cap": 1440, "trend_log_instance": 1},
+        {"object_type": "analog-value", "instance_number": 1, "name": "Zone Setpoint", "units": "degreesFahrenheit", "relinquish_default": "72.0"},
+        {"object_type": "analog-output", "instance_number": 1, "name": "Damper Position", "units": "percent", "relinquish_default": "30.0"},
+        {"object_type": "analog-input", "instance_number": 2, "name": "Airflow", "units": "cubicFeetPerMinute", "bacnet_writable": false,
+         "simulation": {"kind": "follow", "source": "analog-output:1", "scale": 8.0, "offset": 0.0, "noise": 10.0, "interval_s": 5, "decimals": 0}},
+        {"object_type": "binary-input", "instance_number": 1, "name": "Occupied", "active_text": "Occupied", "inactive_text": "Unoccupied", "bacnet_writable": false,
+         "simulation": {"kind": "square", "period_s": 600, "duty": 0.7, "phase_s": 200}}
+      ]
+    },
+    {
+      "id": 4190103,
+      "name": "Sample VAV-3",
+      "description": "Sample VAV box",
+      "location": "Sample building",
+      "bind_address": null,
+      "objects": [
+        {"object_type": "analog-input", "instance_number": 1, "name": "Zone Temp", "units": "degreesFahrenheit", "bacnet_writable": false,
+         "simulation": {"kind": "sine", "center": 72.0, "amplitude": 1.5, "period_s": 900, "phase_s": 600, "interval_s": 5, "decimals": 1},
+         "trended": true, "trend_mode": "interval", "trend_interval_seconds": 60, "trend_sample_cap": 1440, "trend_log_instance": 1},
+        {"object_type": "analog-value", "instance_number": 1, "name": "Zone Setpoint", "units": "degreesFahrenheit", "relinquish_default": "72.0"},
+        {"object_type": "analog-output", "instance_number": 1, "name": "Damper Position", "units": "percent", "relinquish_default": "30.0"},
+        {"object_type": "analog-input", "instance_number": 2, "name": "Airflow", "units": "cubicFeetPerMinute", "bacnet_writable": false,
+         "simulation": {"kind": "follow", "source": "analog-output:1", "scale": 8.0, "offset": 0.0, "noise": 10.0, "interval_s": 5, "decimals": 0}},
+        {"object_type": "binary-input", "instance_number": 1, "name": "Occupied", "active_text": "Occupied", "inactive_text": "Unoccupied", "bacnet_writable": false,
+         "simulation": {"kind": "square", "period_s": 600, "duty": 0.7, "phase_s": 400}}
+      ]
+    }
+  ]
+}

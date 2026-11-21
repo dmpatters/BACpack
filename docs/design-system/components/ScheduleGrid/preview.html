@@ -1,0 +1,79 @@
+<!-- @dsCard group="Data" height=640 subtitle="Weekly schedule on a 24-hour grid, with a day editor and copy-to-days" -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body class="bp-body">
+  <div class="bp-stack">
+    <div class="bp-sched" role="group" aria-label="Weekly schedule, device time">
+      <div class="bp-sched__axis">
+        <span></span>
+        <div class="bp-sched__ticks" aria-hidden="true"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
+        <span class="bp-sched__sum">Device time</span>
+      </div>
+      <div class="bp-sched__row" aria-current="true">
+        <button class="bp-sched__day" type="button" aria-pressed="true">Mon</button>
+        <div class="bp-sched__track"><span class="bp-sched__seg " style="--start:25.00%;--span:50.00%">Occupied</span></div>
+        <span class="bp-sched__sum">06:00 Occupied &middot; 18:00 Unoccupied</span>
+      </div>
+      <div class="bp-sched__row">
+        <button class="bp-sched__day" type="button" aria-pressed="false">Tue</button>
+        <div class="bp-sched__track"><span class="bp-sched__seg " style="--start:25.00%;--span:50.00%">Occupied</span></div>
+        <span class="bp-sched__sum">06:00 Occupied &middot; 18:00 Unoccupied</span>
+      </div>
+      <div class="bp-sched__row">
+        <button class="bp-sched__day" type="button" aria-pressed="false">Wed</button>
+        <div class="bp-sched__track"><span class="bp-sched__seg " style="--start:25.00%;--span:50.00%">Occupied</span><span class="bp-sched__now" style="--at:35.12%" title="Now 08:26 device time"></span></div>
+        <span class="bp-sched__sum">06:00 Occupied &middot; 18:00 Unoccupied</span>
+      </div>
+      <div class="bp-sched__row">
+        <button class="bp-sched__day" type="button" aria-pressed="false">Thu</button>
+        <div class="bp-sched__track"><span class="bp-sched__seg " style="--start:25.00%;--span:50.00%">Occupied</span></div>
+        <span class="bp-sched__sum">06:00 Occupied &middot; 18:00 Unoccupied</span>
+      </div>
+      <div class="bp-sched__row">
+        <button class="bp-sched__day" type="button" aria-pressed="false">Fri</button>
+        <div class="bp-sched__track"><span class="bp-sched__seg " style="--start:25.00%;--span:41.67%">Occupied</span></div>
+        <span class="bp-sched__sum">06:00 Occupied &middot; 16:00 Unoccupied</span>
+      </div>
+      <div class="bp-sched__row">
+        <button class="bp-sched__day" type="button" aria-pressed="false">Sat</button>
+        <div class="bp-sched__track"><span class="bp-sched__seg " style="--start:33.33%;--span:16.67%">Occupied</span><span class="bp-sched__seg bp-sched__seg--b" style="--start:50.00%;--span:8.33%">Standby</span></div>
+        <span class="bp-sched__sum">08:00 Occupied &middot; 12:00 Standby &middot; 14:00 Unoccupied</span>
+      </div>
+      <div class="bp-sched__row">
+        <button class="bp-sched__day" type="button" aria-pressed="false">Sun</button>
+        <div class="bp-sched__track"></div>
+        <span class="bp-sched__sum">Unoccupied all day (default)</span>
+      </div>
+    </div>
+
+    <div class="bp-card bp-sched__edit">
+      <h3 class="bp-section-title" style="margin:0">Monday</h3>
+      <div class="bp-sched__entry">
+        <label class="bp-label" for="e1t" style="display:none">Time</label>
+        <input class="bp-input" id="e1t" type="time" value="06:00" aria-label="Time, entry 1">
+        <select class="bp-select" aria-label="Value, entry 1"><option>Occupied</option><option>Standby</option><option>Unoccupied</option></select>
+        <button class="bp-btn bp-btn--sm bp-btn--delete" type="button">Delete</button>
+      </div>
+      <div class="bp-sched__entry">
+        <input class="bp-input" type="time" value="18:00" aria-label="Time, entry 2">
+        <select class="bp-select" aria-label="Value, entry 2"><option>Unoccupied</option><option>Standby</option><option>Occupied</option></select>
+        <button class="bp-btn bp-btn--sm bp-btn--delete" type="button">Delete</button>
+      </div>
+      <div><button class="bp-btn bp-btn--sm" type="button">Add entry</button></div>
+      <div class="bp-field">
+        <span class="bp-label" id="cp">Copy Monday to</span>
+        <div class="bp-cluster" aria-labelledby="cp">
+          <span class="bp-daypick">
+            <button type="button" aria-pressed="true">Tue</button><button type="button" aria-pressed="true">Wed</button><button type="button" aria-pressed="true">Thu</button><button type="button" aria-pressed="false">Fri</button><button type="button" aria-pressed="false">Sat</button><button type="button" aria-pressed="false">Sun</button>
+          </span>
+          <button class="bp-btn bp-btn--sm bp-btn--ghost" type="button">Weekdays</button>
+          <button class="bp-btn bp-btn--sm bp-btn--ghost" type="button">All days</button>
+          <button class="bp-btn bp-btn--sm bp-btn--primary" type="button">Copy</button>
+        </div>
+        <span class="bp-help">Copy replaces the chosen days' entries.</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

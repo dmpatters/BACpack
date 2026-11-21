@@ -1,0 +1,33 @@
+[Unit]
+Description=BACnet server (device simulator + gateway)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bacpack
+Group=bacpack
+WorkingDirectory=/var/lib/bacpack
+Environment=BACPACK_DB_PATH=/var/lib/bacpack/bacpack.db BACPACK_SERVICE=1
+# Written by packaging/install.sh: BACPACK_PORT (--port), plus BACPACK_FIREWALL
+# and BACPACK_STARTED, which only the installer reads.
+EnvironmentFile=/etc/bacpack.env
+ExecStart=/opt/bacpack/.venv/bin/python -P -m bacpack serve --port ${BACPACK_PORT}
+Restart=on-failure
+RestartSec=5
+# 78: SQLite too old; 79: unusable certificate pair (the message names the
+# fix); 81: database saved by a newer BACpack. A restart can't fix any of
+# them. 80, a listen address not on this machine yet, is retried.
+RestartPreventExitStatus=78 79 81
+# Devices are separate processes that must outlive a crash of the web
+# process; a requested stop stops them itself, within this timeout.
+KillMode=process
+TimeoutStopSec=90
+
+# Neither the web UI port nor BACnet/IP (47808) is privileged, so no extra
+# capabilities are needed. For the web UI on 443 (see the README's Port 443)
+# a drop-in (systemctl edit bacpack) adds:
+# AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

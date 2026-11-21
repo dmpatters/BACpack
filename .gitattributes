@@ -1,0 +1,8 @@
+# Built by `npm run build` and committed (FastAPI serves it): keep minified
+# output out of diffs and PR review.
+src/bacpack/web/spa/** -diff linguist-generated
+# Files run or read on Linux: LF even in a Windows checkout.
+*.sh text eol=lf
+*.service text eol=lf
+# Fixture sets are hashed byte for byte: no line-ending conversion.
+tests/upgrade_fixtures/** -text

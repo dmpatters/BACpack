@@ -1,0 +1,33 @@
+<!-- @dsCard group="Data" height=240 subtitle="Process, connector and log-level states, always with a word" -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body class="bp-body">
+  <div class="bp-stack">
+    <div class="bp-cluster">
+      <span class="bp-pill bp-pill--ok">running</span>
+      <span class="bp-pill">stopped</span>
+      <span class="bp-pill bp-pill--ok">ok</span>
+      <span class="bp-pill bp-pill--danger">failing (65)</span>
+      <span class="bp-pill bp-pill--danger">crashed</span>
+      <span class="bp-pill bp-pill--info">proxy</span>
+    </div>
+    <div class="bp-cluster">
+      <span class="bp-pill">starting&hellip;</span>
+      <span class="bp-pill">stopping&hellip;</span>
+      <span class="bp-pill">reinitializing&hellip;</span>
+      <span class="bp-pill">applying&hellip;</span>
+      <span class="bp-pill bp-pill--warn">restart pending</span>
+      <span class="bp-pill bp-pill--danger">apply failed</span>
+    </div>
+    <div class="bp-cluster">
+      <span class="bp-pill bp-pill--plain">DEBUG</span>
+      <span class="bp-pill bp-pill--info bp-pill--plain">INFO</span>
+      <span class="bp-pill bp-pill--warn bp-pill--plain">WARNING</span>
+      <span class="bp-pill bp-pill--danger bp-pill--plain">ERROR</span>
+      <span class="bp-pill bp-pill--ok bp-pill--plain">supported</span>
+    </div>
+    <p class="bp-muted" style="margin:0">Process and connector states carry a dot and a word; log levels and capability tags are word only.</p>
+  </div>
+</body>
+</html>

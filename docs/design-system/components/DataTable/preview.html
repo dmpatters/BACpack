@@ -1,0 +1,73 @@
+<!-- @dsCard group="Data" height=520 subtitle="Dense table, mono ids, flag chips, quiet row actions" -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body class="bp-body">
+  <h2 class="bp-section-title" style="margin-top:0">Objects (55)</h2>
+  <div class="bp-table-wrap">
+    <table class="bp-table">
+      <thead>
+        <tr>
+          <th class="bp-cell-check"><input type="checkbox" aria-label="Select all"></th>
+          <th>Type:instance</th><th>Name</th><th>Description</th><th>Units</th><th>Flags</th><th class="bp-cell-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="bp-cell-check"><input type="checkbox" aria-label="Select AI-1"></td>
+          <td class="bp-cell-id">analog-input:1</td><td>AI-1</td><td>Simulated analog input 67</td><td>degreesFahrenheit</td>
+          <td><span class="bp-flags"><span class="bp-flag" title="Writable">W</span><span class="bp-flag" title="Trended">T</span></span></td>
+          <td class="bp-cell-actions"><a href="#">Edit</a><button class="bp-btn bp-btn--sm bp-btn--delete" type="button">Delete</button></td>
+        </tr>
+        <tr data-selected>
+          <td class="bp-cell-check"><input type="checkbox" checked aria-label="Select AO-1"></td>
+          <td class="bp-cell-id">analog-output:1</td><td>AO-1</td><td>Playing with this</td><td>percent</td>
+          <td><span class="bp-flags"><span class="bp-flag" title="Writable">W</span><span class="bp-flag" title="Trended">T</span><span class="bp-flag" title="Alarming">A</span></span></td>
+          <td class="bp-cell-actions"><a href="#">Edit</a><button class="bp-btn bp-btn--sm bp-btn--delete" type="button">Delete</button></td>
+        </tr>
+        <tr>
+          <td class="bp-cell-check"><input type="checkbox" aria-label="Select OAT"></td>
+          <td class="bp-cell-id">analog-input:1</td><td>OAT</td><td>OutdoorTemperature</td><td>degreesFahrenheit</td>
+          <td><span class="bp-flags"><span class="bp-flag" title="Writable">W</span><span class="bp-flag" title="Trended">T</span><span class="bp-flag" title="Simulated">S</span></span></td>
+          <td class="bp-cell-actions"><a href="#">Edit</a><button class="bp-btn bp-btn--sm bp-btn--delete" type="button">Delete</button></td>
+        </tr>
+        <tr>
+          <td class="bp-cell-check"><input type="checkbox" aria-label="Select HEAT_COOL"></td>
+          <td class="bp-cell-id">binary-value:1</td><td>HEAT_COOL</td><td>HeatCoolMode</td><td class="bp-muted">&mdash;</td>
+          <td><span class="bp-flags"><span class="bp-flag" title="Writable">W</span></span></td>
+          <td class="bp-cell-actions"><a href="#">Edit</a><button class="bp-btn bp-btn--sm bp-btn--delete" type="button">Delete</button></td>
+        </tr>
+        <tr>
+          <td class="bp-cell-check"><input type="checkbox" aria-label="Select OCC_SCHEDULE"></td>
+          <td class="bp-cell-id">schedule:1</td><td>OCC_SCHEDULE</td><td>DailyOccupancySchedule</td><td class="bp-muted">&mdash;</td>
+          <td><span class="bp-flags"><span class="bp-flag" title="Writable">W</span></span></td>
+          <td class="bp-cell-actions"><a href="#">Edit</a><button class="bp-btn bp-btn--sm bp-btn--delete" type="button">Delete</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="bp-section-title">Connectors</h2>
+  <div class="bp-table-wrap">
+    <table class="bp-table">
+      <thead>
+        <tr><th>Name</th><th>Type</th><th>Source</th><th class="bp-cell-num">Interval (s)</th><th>Status</th><th class="bp-cell-num">Mappings</th><th></th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><a href="#">OpenMeteoWeather</a></td><td>HTTP</td>
+          <td class="bp-cell-clip" title="https://api.open-meteo.com/v1/forecast?latitude=46.87&amp;longitude=-96.79&amp;current=temperature_2m,relative_humidity_2m">https://api.open-meteo.com/v1/forecast?latitude=46.87&amp;longitude=-96.79&amp;current=temperature_2m,relative_humidity_2m</td>
+          <td class="bp-cell-num">300</td><td><span class="bp-pill bp-pill--ok">ok</span></td><td class="bp-cell-num">2</td>
+          <td class="bp-cell-actions"><a href="#">Open</a></td>
+        </tr>
+        <tr>
+          <td><a href="#">Room Control Simulator 17</a></td><td>BACnet</td>
+          <td class="bp-cell-clip">device 17 (via RoomSimulator)</td>
+          <td class="bp-cell-num">30</td><td><span class="bp-pill bp-pill--danger">failing (65)</span></td><td class="bp-cell-num">9 read, 0 write</td>
+          <td class="bp-cell-actions"><a href="#">Open</a></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>

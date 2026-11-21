@@ -1,0 +1,29 @@
+<!-- @dsCard group="Data" height=470 subtitle="Storage meter plus a sorted table with inline bars" -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body class="bp-body">
+  <div class="bp-stack">
+    <div class="bp-meter" role="meter" aria-label="Trend storage used" aria-valuemin="0" aria-valuemax="1024" aria-valuenow="24.03">
+      <div class="bp-meter__head"><span>24.03 MB of 1024 MB</span><span class="bp-mono">2.3%</span></div>
+      <div class="bp-meter__track"><div class="bp-meter__fill" style="--value:2.3%"></div></div>
+    </div>
+    <div class="bp-meter" role="meter" aria-label="Trend storage used, near limit" aria-valuemin="0" aria-valuemax="1024" aria-valuenow="890">
+      <div class="bp-meter__head"><span>890 MB of 1024 MB</span><span class="bp-mono">86.9%</span></div>
+      <div class="bp-meter__track"><div class="bp-meter__fill bp-meter__fill--warn" style="--value:86.9%"></div></div>
+    </div>
+    <div class="bp-table-wrap">
+      <table class="bp-table">
+        <thead><tr><th>Object</th><th>Device</th><th>Share of used</th><th class="bp-cell-num">Size</th></tr></thead>
+        <tbody>
+          <tr><td>AO-1</td><td class="bp-cell-id">599002</td><td><div class="bp-meter bp-meter--sm"><div class="bp-meter__track"><div class="bp-meter__fill" style="--value:100%"></div></div></div></td><td class="bp-cell-num bp-mono">2.00 MB</td></tr>
+          <tr><td>BI-1</td><td class="bp-cell-id">599002</td><td><div class="bp-meter bp-meter--sm"><div class="bp-meter__track"><div class="bp-meter__fill" style="--value:100%"></div></div></div></td><td class="bp-cell-num bp-mono">2.00 MB</td></tr>
+          <tr><td>TemperatureIndoor</td><td class="bp-cell-id">100000</td><td><div class="bp-meter bp-meter--sm"><div class="bp-meter__track"><div class="bp-meter__fill" style="--value:50%"></div></div></div></td><td class="bp-cell-num bp-mono">1.00 MB</td></tr>
+          <tr><td>SetpointValue</td><td class="bp-cell-id">100000</td><td><div class="bp-meter bp-meter--sm"><div class="bp-meter__track"><div class="bp-meter__fill" style="--value:50%"></div></div></div></td><td class="bp-cell-num bp-mono">1.00 MB</td></tr>
+          <tr><td>VENTILATION_MODE</td><td class="bp-cell-id">599003</td><td><div class="bp-meter bp-meter--sm"><div class="bp-meter__track"><div class="bp-meter__fill" style="--value:1%"></div></div></div></td><td class="bp-cell-num bp-mono">0.01 MB</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>

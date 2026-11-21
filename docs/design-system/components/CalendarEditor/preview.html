@@ -1,0 +1,69 @@
+<!-- @dsCard group="Forms" height=720 subtitle="Date, range and pattern entries described in plain language" -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body class="bp-body">
+  <div class="bp-stack">
+    <div class="bp-cluster">
+      <span class="bp-label">Today, 2026-10-12</span>
+      <span class="bp-pill bp-pill--plain">not in calendar</span>
+    </div>
+
+    <div class="bp-table-wrap">
+      <table class="bp-table">
+        <thead><tr><th>Kind</th><th>Matches</th><th>BACnet entry</th><th></th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="bp-pill bp-pill--plain">Date</span></td>
+            <td>December 25, every year</td>
+            <td class="bp-cell-id">year * &middot; month 12 &middot; day 25 &middot; weekday *</td>
+            <td class="bp-cell-actions"><a href="#">Edit</a><button class="bp-btn bp-btn--sm bp-btn--delete" type="button">Delete</button></td>
+          </tr>
+          <tr>
+            <td><span class="bp-pill bp-pill--plain">Pattern</span></td>
+            <td>Last Friday of every month</td>
+            <td class="bp-cell-id">month * &middot; week last &middot; weekday 5</td>
+            <td class="bp-cell-actions"><a href="#">Edit</a><button class="bp-btn bp-btn--sm bp-btn--delete" type="button">Delete</button></td>
+          </tr>
+          <tr>
+            <td><span class="bp-pill bp-pill--plain">Range</span></td>
+            <td>2026-07-01 to 2026-07-07</td>
+            <td class="bp-cell-id">2026-07-01 &ndash; 2026-07-07</td>
+            <td class="bp-cell-actions"><a href="#">Edit</a><button class="bp-btn bp-btn--sm bp-btn--delete" type="button">Delete</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <form class="bp-form" onsubmit="return false">
+      <fieldset class="bp-fieldset">
+        <legend>Add entry</legend>
+        <div class="bp-stack">
+          <div class="bp-segmented" role="radiogroup" aria-label="Entry kind">
+            <label><input type="radio" name="kind" value="date"><span>Date</span></label>
+            <label><input type="radio" name="kind" value="range"><span>Date range</span></label>
+            <label><input type="radio" name="kind" value="pattern" checked><span>Pattern</span></label>
+          </div>
+          <div class="bp-form-grid">
+            <div class="bp-field"><label class="bp-label" for="c-month">Month</label>
+              <select class="bp-select" id="c-month"><option>Every month</option><option>January</option><option>February</option><option>March</option></select></div>
+            <div class="bp-field"><label class="bp-label" for="c-week">Which week</label>
+              <select class="bp-select" id="c-week"><option>Every week</option><option>First</option><option>Second</option><option>Third</option><option>Fourth</option><option>Fifth</option><option selected>Last</option></select></div>
+            <div class="bp-field"><label class="bp-label" for="c-day">Weekday</label>
+              <select class="bp-select" id="c-day"><option>Every day</option><option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option selected>Friday</option><option>Saturday</option><option>Sunday</option></select></div>
+          </div>
+          <div class="bp-match" aria-live="polite">
+            <span class="bp-match__label">This entry matches</span>
+            <span class="bp-match__text">Last Friday of every month</span>
+            <span class="bp-match__next">Next: 2026-10-30 &middot; 2026-11-27 &middot; 2026-12-25</span>
+          </div>
+          <div class="bp-form-actions">
+            <button class="bp-btn bp-btn--primary" type="submit">Add entry</button>
+            <button class="bp-btn bp-btn--ghost" type="button">Cancel</button>
+          </div>
+        </div>
+      </fieldset>
+    </form>
+  </div>
+</body>
+</html>

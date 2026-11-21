@@ -1,0 +1,19 @@
+<service>
+  <id>BACpack</id>
+  <name>BACpack</name>
+  <description>BACnet server (device simulator + gateway)</description>
+  <executable>{{PYTHON}}</executable>
+  <arguments>-P -m bacpack serve --port {{PORT}}</arguments>
+  <workingdirectory>{{DATA}}</workingdirectory>
+  <env name="BACPACK_DB_PATH" value="{{DATA}}\bacpack.db"/>
+  <env name="BACPACK_SERVICE" value="1"/>
+  <startmode>Automatic</startmode>
+  <delayedAutoStart>true</delayedAutoStart>
+  <onfailure action="restart" delay="5 sec"/>
+  <stoptimeout>90 sec</stoptimeout>
+  <logpath>{{DATA}}\logs</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>8</keepFiles>
+  </log>
+</service>

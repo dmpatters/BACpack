@@ -1,0 +1,52 @@
+<!-- @dsCard group="Feedback" height=690 subtitle="Loading, inline error next to the action, stale result, field error, not found" -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body class="bp-body">
+  <div class="bp-stack">
+    <section>
+      <h3 class="bp-section-title" style="margin-top:0">Loading</h3>
+      <div class="bp-loading" role="status"><span class="bp-spinner" aria-hidden="true"></span><span>Loading objects&hellip;</span></div>
+      <div class="bp-skeleton-rows" aria-hidden="true">
+        <div class="bp-skeleton" style="width:100%"></div>
+        <div class="bp-skeleton" style="width:82%"></div>
+        <div class="bp-skeleton" style="width:91%"></div>
+      </div>
+    </section>
+
+    <section>
+      <h3 class="bp-section-title" style="margin-top:0">Failed action, shown next to the button</h3>
+      <div class="bp-cluster">
+        <div class="bp-field" style="min-width:220px"><label class="bp-label" for="rd">Property</label><input class="bp-input bp-input--mono" id="rd" type="text" value="present-value"></div>
+        <button class="bp-btn bp-btn--primary" type="button" style="align-self:end">Read</button>
+      </div>
+      <div class="bp-error" role="alert" style="margin-top:var(--space-4)">
+        <span><strong>Read failed.</strong> Device 17 did not answer: timeout after 10 s.</span>
+        <button class="bp-btn bp-btn--sm" type="button">Retry</button>
+      </div>
+      <div class="bp-result bp-result--stale" style="margin-top:var(--space-4)">
+        <span class="bp-cluster"><span class="bp-pill bp-pill--warn bp-pill--plain">previous result</span><span class="bp-mono">08:26:23 UTC</span></span>
+        <span class="bp-mono">present-value = 72.4</span>
+      </div>
+    </section>
+
+    <section>
+      <h3 class="bp-section-title" style="margin-top:0">Field error</h3>
+      <div class="bp-field bp-field--error" style="max-width:260px">
+        <label class="bp-label" for="pi">Poll interval (s)</label>
+        <input class="bp-input" id="pi" type="number" value="0" aria-invalid="true" aria-describedby="pi-e">
+        <span class="bp-field-error" id="pi-e">Enter 1 or more seconds.</span>
+      </div>
+    </section>
+
+    <section>
+      <h3 class="bp-section-title" style="margin-top:0">Not found</h3>
+      <div class="bp-empty">
+        <h4 class="bp-empty__title">Device 599009 not found</h4>
+        <p class="bp-empty__text">It may have been deleted. The device list shows what exists now.</p>
+        <a class="bp-btn" href="#">Back to devices</a>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

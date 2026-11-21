@@ -1,0 +1,46 @@
+name: Bug report
+description: Something in BACpack doesn't work as it should
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, including any error message.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What you did, in order, starting from a running BACpack.
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: BACnet client or front end and its version
+      description: The software talking to BACpack (for example Yabe, a BMS, or the BACpack web UI) and its version.
+    validations:
+      required: true
+  - type: input
+    id: install
+    attributes:
+      label: BACpack version and how it is installed
+      description: For example "service on Windows" or "run by hand on Debian 13". The version is on the About page.
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics file
+      description: >-
+        On the About page choose Download diagnostics and drag the .zip here.
+        Names, addresses and URLs are replaced unless you tick Use real values.
+        Look the file over before posting it publicly.
+        Can't open the web UI? Paste the service log instead (journalctl -u bacpack on
+        Linux, the files in C:\ProgramData\BACpack\logs on Windows).

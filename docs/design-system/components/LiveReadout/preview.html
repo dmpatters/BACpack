@@ -1,0 +1,38 @@
+<!-- @dsCard group="Data" height=420 subtitle="Present value, status, event state and the priority array" -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body class="bp-body">
+  <div class="bp-stack">
+    <div class="bp-readout">
+      <div class="bp-readout__item">
+        <span class="bp-readout__label">Present value</span>
+        <span><span class="bp-readout__value">45.0</span><span class="bp-readout__unit">percent</span></span>
+        <span class="bp-readout__stamp">from priority 8</span>
+        <span class="bp-readout__stamp">updated 08:26:23 UTC</span>
+      </div>
+      <div class="bp-readout__item">
+        <span class="bp-readout__label">Status flags</span>
+        <span class="bp-cluster"><span class="bp-pill bp-pill--ok">normal</span></span>
+      </div>
+      <div class="bp-readout__item">
+        <span class="bp-readout__label">Event state</span>
+        <span class="bp-cluster"><span class="bp-pill bp-pill--ok">normal</span></span>
+      </div>
+      <div class="bp-readout__item bp-readout--stale">
+        <span class="bp-readout__label">Last connector value</span>
+        <span><span class="bp-readout__value">21.4</span><span class="bp-readout__unit">degreesCelsius</span></span>
+        <span class="bp-readout__stamp">12 min ago &middot; <span class="bp-pill bp-pill--warn bp-pill--plain">stale</span></span>
+      </div>
+    </div>
+    <aside class="bp-prio-col" aria-label="Priority array" style="position:static">
+      <ol class="bp-prio-col__list" aria-label="Priority slots">
+        <li class="bp-prio-col__row" data-set><span class="bp-prio-col__n">1</span> <span class="bp-prio-col__name">Manual life safety</span> <span class="bp-prio-col__value">&mdash;</span></li>
+        <li class="bp-prio-col__row" aria-current="true" data-set><span class="bp-prio-col__n">8</span> <span class="bp-prio-col__name">Manual operator</span> <span class="bp-prio-col__value">45.0</span></li>
+        <li class="bp-prio-col__row" data-set data-outranked><span class="bp-prio-col__n">16</span> <span class="bp-prio-col__name"></span> <span class="bp-prio-col__value">60.0</span></li>
+      </ol>
+      <div class="bp-prio-col__default"><span class="bp-prio-col__name">Relinquish default</span> <span class="bp-prio-col__value">50.0</span></div>
+    </aside>
+  </div>
+</body>
+</html>

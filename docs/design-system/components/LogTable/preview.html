@@ -1,0 +1,25 @@
+<!-- @dsCard group="Data" height=400 subtitle="Filters and single-line log rows" -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body class="bp-body">
+  <div class="bp-log-filters">
+    <div class="bp-field"><label class="bp-label" for="l-dev">Device</label>
+      <select class="bp-select" id="l-dev"><option>All devices</option><option>599002</option></select></div>
+    <div class="bp-field"><label class="bp-label" for="l-lvl">Minimum level</label>
+      <select class="bp-select" id="l-lvl"><option>INFO and above</option><option>WARNING and above</option></select></div>
+  </div>
+  <div class="bp-table-wrap">
+    <table class="bp-table">
+      <thead><tr><th>Time (UTC)</th><th>Level</th><th>Device</th><th>Logger</th><th>Message</th></tr></thead>
+      <tbody>
+        <tr><td class="bp-cell-time">2026-10-12 08:09:57</td><td><span class="bp-pill bp-pill--info bp-pill--plain">INFO</span></td><td class="bp-cell-id">599003</td><td class="bp-cell-id">bacpack.engine</td><td class="bp-cell-msg">reattached to already-running device 599003 (pid 5172)</td></tr>
+        <tr><td class="bp-cell-time">2026-10-12 08:09:57</td><td><span class="bp-pill bp-pill--info bp-pill--plain">INFO</span></td><td class="bp-cell-id">599002</td><td class="bp-cell-id">bacpack.engine</td><td class="bp-cell-msg">reattached to already-running device 599002 (pid 5170)</td></tr>
+        <tr><td class="bp-cell-time">2026-10-12 08:09:57</td><td><span class="bp-pill bp-pill--info bp-pill--plain">INFO</span></td><td class="bp-cell-id">100000</td><td class="bp-cell-id">bacpack.engine</td><td class="bp-cell-msg">reattached to already-running device 100000 (pid 5166)</td></tr>
+        <tr><td class="bp-cell-time">2026-10-12 01:24:09</td><td><span class="bp-pill bp-pill--warn bp-pill--plain">WARNING</span></td><td class="bp-cell-id">599003</td><td class="bp-cell-id">bacpack.engine</td><td class="bp-cell-msg">device 599003 marked crashed: no live process found</td></tr>
+        <tr><td class="bp-cell-time">2026-10-12 01:24:09</td><td><span class="bp-pill bp-pill--warn bp-pill--plain">WARNING</span></td><td class="bp-cell-id">599002</td><td class="bp-cell-id">bacpack.engine</td><td class="bp-cell-msg">device 599002 marked crashed: no live process found</td></tr>
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>

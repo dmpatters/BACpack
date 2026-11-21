@@ -1,0 +1,43 @@
+<!-- @dsCard height=288 -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html, body { margin: 0; background: var(--bg); }
+  svg { display: block; width: 960px; height: 288px; }
+  .tile { rx: var(--radius-lg); }
+  .accent { fill: var(--accent); }
+  .ok { fill: var(--ok); }
+  .warn { fill: var(--warn); }
+  .neutral { fill: var(--border-strong); }
+  .ink { fill: var(--text); }
+  .dot { fill: var(--border-strong); }
+  .name { fill: var(--text); font-family: var(--font-sans); font-weight: 700; font-size: 96px; letter-spacing: -0.02em; }
+  .tag { fill: var(--text-muted); font-family: var(--font-sans); font-size: 14px; }
+</style>
+</head>
+<body>
+<svg viewBox="0 0 960 288" role="img" aria-label="BACpack">
+  <!--
+    blocks: accent 160x240, ok 160x112, warn 64x112, border-strong 48x112, text 160x112 (bleeds off the right edge); all rx radius-lg
+    arrangement: one tall accent slab with a 2x2 staggered cluster to its right, the ink block bleeding off the right edge
+    pattern: dot grid, 7x4 at space-5 pitch (16px): a precise, technical, 4px-grid tool for lab gear, so a dot matrix like a pin header
+    steps and radii: space-5, space-6, space-7, radius-lg
+  -->
+  <rect class="tile accent" x="496" y="24" width="160" height="240"/>
+  <rect class="tile ok" x="672" y="24" width="160" height="112"/>
+  <rect class="tile warn" x="672" y="152" width="64" height="112"/>
+  <rect class="tile neutral" x="752" y="152" width="48" height="112"/>
+  <rect class="tile ink" x="816" y="152" width="160" height="112"/>
+  <g>
+    <circle class="dot" cx="856" cy="32" r="2"/><circle class="dot" cx="872" cy="32" r="2"/><circle class="dot" cx="888" cy="32" r="2"/><circle class="dot" cx="904" cy="32" r="2"/><circle class="dot" cx="920" cy="32" r="2"/><circle class="dot" cx="936" cy="32" r="2"/><circle class="dot" cx="952" cy="32" r="2"/>
+    <circle class="dot" cx="856" cy="48" r="2"/><circle class="dot" cx="872" cy="48" r="2"/><circle class="dot" cx="888" cy="48" r="2"/><circle class="dot" cx="904" cy="48" r="2"/><circle class="dot" cx="920" cy="48" r="2"/><circle class="dot" cx="936" cy="48" r="2"/><circle class="dot" cx="952" cy="48" r="2"/>
+    <circle class="dot" cx="856" cy="64" r="2"/><circle class="dot" cx="872" cy="64" r="2"/><circle class="dot" cx="888" cy="64" r="2"/><circle class="dot" cx="904" cy="64" r="2"/><circle class="dot" cx="920" cy="64" r="2"/><circle class="dot" cx="936" cy="64" r="2"/><circle class="dot" cx="952" cy="64" r="2"/>
+    <circle class="dot" cx="856" cy="80" r="2"/><circle class="dot" cx="872" cy="80" r="2"/><circle class="dot" cx="888" cy="80" r="2"/><circle class="dot" cx="904" cy="80" r="2"/><circle class="dot" cx="920" cy="80" r="2"/><circle class="dot" cx="936" cy="80" r="2"/><circle class="dot" cx="952" cy="80" r="2"/>
+  </g>
+  <text class="name" x="24" y="212">BACpack</text>
+  <text class="tag" x="24" y="256">Virtual BACnet devices for your bench.</text>
+</svg>
+</body>
+</html>

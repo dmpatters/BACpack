@@ -1,0 +1,112 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bacpack"
+version = "1.0.0"
+description = "Open-source BACnet server: device simulator + gateway with a browser UI"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.13"
+dependencies = [
+    # Pinned to the one release BACpack runs on. An upgrade starts at
+    # tests/test_bacpypes3_compat.py: its fingerprints list every upstream
+    # function that changed, with why BACpack depends on it. 0.0.110 is
+    # declined: its self-send check breaks devices on 127.x addresses that talk
+    # to each other.
+    "bacpypes3>=0.0.106,<0.0.107",
+    "sqlalchemy>=2.0",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "pydantic>=2.0",
+    # CSV import's UploadFile parsing (multipart/form-data), still needed by
+    # the JSON API even after the React SPA (release 0.4.0) replaced the
+    # Jinja2 HTML forms that used to be the other multipart consumer.
+    "python-multipart>=0.0.9",
+    # Was dev-only (used only by starlette's TestClient) until pull
+    # connectors (release 0.3.0) needed it at runtime for HTTP polling.
+    "httpx>=0.27",
+    # Concurrent multi-device hosting (2026-09-07): verifying a reattached
+    # child process's PID is still actually the process BACpack launched
+    # (not a coincidentally-reused PID number) needs cross-platform process
+    # introspection the stdlib doesn't provide -- see EngineManager's
+    # _is_same_process.
+    "psutil>=5.9",
+    # Certificates for HTTPS; later also the encryption of stored credentials.
+    "cryptography>=44",
+    # Names the web and device processes "bacpack: ..." in ps and top on Linux;
+    # a no-op on Windows, which names them by their executable's version info.
+    # Only where it has a wheel: elsewhere (armv7, i686, s390x, Windows on
+    # ARM) pip would need a compiler, and a process name isn't worth a failed
+    # install.
+    "setproctitle>=1.3; (sys_platform == 'win32' and (platform_machine == 'AMD64' or platform_machine == 'x86')) or sys_platform == 'darwin' or (sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64' or platform_machine == 'ppc64le' or platform_machine == 'riscv64'))",
+]
+
+[project.optional-dependencies]
+dev = [
+    # Below 9.2: pytest-xdist 3.8.0's --dist loadgroup sets Item._nodeid,
+    # which 9.2 no longer reads, so the bacnet-udp group is lost (tests/conftest.py).
+    "pytest>=8.0,<9.2",
+    "pytest-asyncio>=0.23",
+    "pytest-xdist>=3.5",
+    # Exact: another release reports differently and breaks the baseline.
+    "basedpyright==1.40.2",
+    # Exact: a new release adds findings to rule sets already selected.
+    "ruff==0.17.2",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# The built React SPA (src/bacpack/web/spa/, committed to git -- see
+# "Packaging" in the plan doc's SPA design section) isn't .py files, so
+# setuptools won't pick it up by default -- without this, an editable
+# install (dev/tests) works fine since it resolves straight to the source
+# tree, but a real install (the service installers) silently ships without
+# it and the SPA-serving catch-all 503s.
+"bacpack.web" = ["spa/*", "spa/assets/*"]
+# The sample building is data, not .py, so it needs listing too.
+"bacpack" = ["samples/*.json"]
+
+[tool.basedpyright]
+# A pre-PR check, not a gate in CI: nothing may be reported beyond
+# .basedpyright/baseline.json.
+include = ["src/bacpack"]
+exclude = ["src/bacpack/web/spa"]
+typeCheckingMode = "basic"
+pythonVersion = "3.13"
+# bacpypes3 ships no type hints.
+reportMissingTypeStubs = false
+
+[tool.ruff]
+# A pre-PR check like basedpyright, with no baseline: a false alarm gets
+# `# noqa: RULE` and a reason on its line.
+include = ["src/bacpack/**/*.py"]
+extend-exclude = ["src/bacpack/web/spa"]
+target-version = "py313"
+
+[tool.ruff.lint]
+# Bug rules only, no style rules and no formatter.
+select = ["F", "E7", "E9", "B", "PLE", "ASYNC", "RUF006", "RUF100"]
+# raise-from inside except only changes the traceback; a `timeout`
+# parameter on a coroutine is an API style choice.
+ignore = ["B904", "ASYNC109"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency markers are meant as defaults.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "scale: field-sized checks, run with --scale",
+    "interop: bacnet-stack checks against BACpack devices on loopback (Linux only), run with --interop",
+]
+# A SQLAlchemy deprecation raised in the test's own process fails it, so an
+# upgrade of the pinned version (packaging/constraints.txt) is less likely to
+# ship one unseen. One raised in a worker thread that catches broadly (the
+# trend pruner, the history writer) or in a spawned device child is not seen.
+filterwarnings = ["error::sqlalchemy.exc.SADeprecationWarning"]

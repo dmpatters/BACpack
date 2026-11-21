@@ -1,0 +1,55 @@
+<!-- @dsCard group="Data" height=470 subtitle="Search, filter, sortable headers and a bulk bar that never moves the table" -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body class="bp-body">
+  <div class="bp-stack">
+    <div>
+      <div class="bp-toolbar">
+        <input class="bp-input bp-toolbar__search" type="search" placeholder="Search 55 objects" aria-label="Search objects">
+        <select class="bp-select bp-toolbar__select" aria-label="Filter by type"><option>All types</option><option>analog-input</option><option>analog-value</option></select>
+        <span class="bp-toolbar__count">55 objects</span>
+      </div>
+      <div class="bp-table-wrap">
+        <table class="bp-table">
+          <thead><tr>
+            <th class="bp-cell-check"><input type="checkbox" aria-label="Select all"></th>
+            <th aria-sort="ascending"><button class="bp-sort" type="button">Type:instance</button></th>
+            <th><button class="bp-sort" type="button">Name</button></th>
+            <th><button class="bp-sort" type="button">Units</button></th>
+          </tr></thead>
+          <tbody>
+            <tr><td class="bp-cell-check"><input type="checkbox" aria-label="Select AI-1"></td><td class="bp-cell-id">analog-input:1</td><td>AI-1</td><td>degreesFahrenheit</td></tr>
+            <tr><td class="bp-cell-check"><input type="checkbox" aria-label="Select AI-2"></td><td class="bp-cell-id">analog-input:2</td><td>AI-2</td><td>degreesFahrenheit</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div>
+      <div class="bp-toolbar">
+        <input class="bp-input bp-toolbar__search" type="search" placeholder="Search 55 objects" aria-label="Search objects">
+        <select class="bp-select bp-toolbar__select" aria-label="Filter by type"><option>All types</option></select>
+        <div class="bp-bulkbar" role="group" aria-label="Bulk actions">
+          <span class="bp-bulkbar__count">3 selected</span>
+          <button class="bp-btn bp-btn--sm" type="button">Edit units</button>
+          <button class="bp-btn bp-btn--sm bp-btn--danger" type="button">Delete</button>
+          <button class="bp-btn bp-btn--sm bp-btn--ghost" type="button">Clear</button>
+        </div>
+      </div>
+      <div class="bp-table-wrap">
+        <table class="bp-table">
+          <thead><tr>
+            <th class="bp-cell-check"><input type="checkbox" checked aria-label="Select all"></th>
+            <th aria-sort="descending"><button class="bp-sort" type="button">Name</button></th>
+            <th><button class="bp-sort" type="button">Units</button></th>
+          </tr></thead>
+          <tbody>
+            <tr data-selected><td class="bp-cell-check"><input type="checkbox" checked aria-label="Select SetpointValue"></td><td>SetpointValue</td><td>degreesFahrenheit</td></tr>
+            <tr data-selected><td class="bp-cell-check"><input type="checkbox" checked aria-label="Select Setpoint1"></td><td>Setpoint1</td><td>degreesFahrenheit</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

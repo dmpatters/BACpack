@@ -1,0 +1,50 @@
+<!-- @dsCard group="Forms" height=640 subtitle="Numbered state names with reorder, plus a relinquish default chosen by name" -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body class="bp-body">
+  <form class="bp-form" onsubmit="return false">
+    <fieldset class="bp-fieldset">
+      <legend>States</legend>
+      <div class="bp-stack">
+        <div class="bp-presets">
+          <span class="bp-label">Start from</span>
+          <button class="bp-btn bp-btn--sm" type="button">Off / On</button>
+          <button class="bp-btn bp-btn--sm" type="button">Off / Low / High</button>
+          <button class="bp-btn bp-btn--sm" type="button">Occupied / Standby / Unoccupied</button>
+        </div>
+        <ol class="bp-states" aria-label="State names">
+          <li class="bp-state"><span class="bp-state__n">1</span><input class="bp-input" type="text" value="Off" aria-label="Name of state 1">
+            <span class="bp-state__tools"><button class="bp-btn bp-btn--sm bp-btn--ghost" type="button" aria-label="Move state 1 up" disabled>&uarr;</button><button class="bp-btn bp-btn--sm bp-btn--ghost" type="button" aria-label="Move state 1 down">&darr;</button><button class="bp-btn bp-btn--sm bp-btn--delete" type="button" aria-label="Delete state 1">Delete</button></span></li>
+          <li class="bp-state"><span class="bp-state__n">2</span><input class="bp-input" type="text" value="Low" aria-label="Name of state 2">
+            <span class="bp-state__tools"><button class="bp-btn bp-btn--sm bp-btn--ghost" type="button" aria-label="Move state 2 up">&uarr;</button><button class="bp-btn bp-btn--sm bp-btn--ghost" type="button" aria-label="Move state 2 down">&darr;</button><button class="bp-btn bp-btn--sm bp-btn--delete" type="button" aria-label="Delete state 2">Delete</button></span></li>
+          <li class="bp-state"><span class="bp-state__n">3</span><input class="bp-input" type="text" value="Medium" aria-label="Name of state 3">
+            <span class="bp-state__tools"><button class="bp-btn bp-btn--sm bp-btn--ghost" type="button" aria-label="Move state 3 up">&uarr;</button><button class="bp-btn bp-btn--sm bp-btn--ghost" type="button" aria-label="Move state 3 down">&darr;</button><button class="bp-btn bp-btn--sm bp-btn--delete" type="button" aria-label="Delete state 3">Delete</button></span></li>
+          <li class="bp-state bp-state--error"><span class="bp-state__n">4</span><input class="bp-input" type="text" value="Medium" aria-label="Name of state 4" aria-invalid="true" aria-describedby="se-err">
+            <span class="bp-state__tools"><button class="bp-btn bp-btn--sm bp-btn--ghost" type="button" aria-label="Move state 4 up">&uarr;</button><button class="bp-btn bp-btn--sm bp-btn--ghost" type="button" aria-label="Move state 4 down" disabled>&darr;</button><button class="bp-btn bp-btn--sm bp-btn--delete" type="button" aria-label="Delete state 4">Delete</button></span></li>
+        </ol>
+        <p class="bp-states__error" id="se-err">State 4 repeats the name of state 3. Names must be different.</p>
+        <div class="bp-states__footer">
+          <button class="bp-btn bp-btn--sm" type="button">Add state</button>
+          <span class="bp-states__count">4 states</span>
+        </div>
+      </div>
+    </fieldset>
+
+    <div class="bp-form-grid">
+      <div class="bp-field">
+        <label class="bp-label" for="se-rd">Relinquish default</label>
+        <select class="bp-select" id="se-rd"><option>None</option><option>1 &middot; Off</option><option selected>2 &middot; Low</option><option>3 &middot; Medium</option><option>4 &middot; Medium</option></select>
+        <span class="bp-help">The state used when no priority slot is in control.</span>
+      </div>
+    </div>
+
+    <div class="bp-callout bp-callout--warn" role="alert"><strong>Reordering renumbers states.</strong> Schedule OCC_SCHEDULE uses state 3 (Medium). Update it after moving or deleting states.</div>
+
+    <div class="bp-form-actions">
+      <button class="bp-btn bp-btn--primary" type="submit">Save</button>
+      <button class="bp-btn bp-btn--ghost" type="button">Cancel</button>
+    </div>
+  </form>
+</body>
+</html>

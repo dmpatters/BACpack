@@ -1,0 +1,23 @@
+<!-- @dsCard group="Forms" height=330 subtitle="Searchable select for long lists such as units" -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body class="bp-body">
+  <div class="bp-form">
+    <div class="bp-field">
+      <label class="bp-label" for="u-input">Units</label>
+      <div class="bp-combo">
+        <input class="bp-input" id="u-input" type="text" role="combobox" aria-expanded="true" aria-controls="u-list" aria-autocomplete="list" value="fahr">
+        <ul class="bp-combo__list" id="u-list" role="listbox" aria-label="Units">
+          <li class="bp-combo__group" role="presentation">Temperature</li>
+          <li class="bp-combo__option" role="option" aria-selected="true"><span>Degrees <mark>Fahr</mark>enheit</span><span class="bp-combo__hint">degreesFahrenheit</span></li>
+          <li class="bp-combo__option" role="option" data-active><span>Degree-days <mark>Fahr</mark>enheit</span><span class="bp-combo__hint">degreeDaysFahrenheit</span></li>
+          <li class="bp-combo__group" role="presentation">Temperature difference</li>
+          <li class="bp-combo__option" role="option"><span>Delta degrees <mark>Fahr</mark>enheit</span><span class="bp-combo__hint">deltaDegreesFahrenheit</span></li>
+        </ul>
+      </div>
+      <span class="bp-help">Type a name or the BACnet enum.</span>
+    </div>
+  </div>
+</body>
+</html>

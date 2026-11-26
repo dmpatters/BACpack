@@ -15,6 +15,7 @@ from ... import auth, login_store, security_log
 from ...db import lock_both_files
 from ..auth_middleware import SESSION_COOKIE, client_ip, cookie_kwargs
 from ..deps import get_session
+from ._lockout import locked as _locked
 
 router = APIRouter()
 
@@ -143,19 +144,15 @@ async def login(body: LoginBody, request: Request, response: Response):
     def save():
         with session_factory() as session:
             lock_both_files(session)
+            # A password change or login reset since the read ended every
+            # session; one checked against the old password must not start.
+            if login_store.get_login_state(session).epoch != state.epoch:
+                raise HTTPException(status_code=401, detail="the login changed while signing in; sign in again")
             _start_session(request, response, session)
 
     await asyncio.to_thread(save)
     security_log.login_ok(ip, state.username or "")
     return {"mode": "login", "signed_in": True, "username": state.username}
-
-
-def _locked(seconds: float) -> HTTPException:
-    return HTTPException(
-        status_code=429,
-        detail="too many failed logins; try again later",
-        headers={"Retry-After": str(max(1, round(seconds)))},
-    )
 
 
 @router.post("/auth/logout", status_code=204)

@@ -166,7 +166,7 @@ Simulators, HTTP connectors and BACnet read mappings write at the feed priority 
 
 `web/app.py`'s `create_app()` builds the FastAPI app. Its lifespan checks the SQLite version, runs `init_db`, creates the `EngineManager`, connector poller and pruning tasks, and reattaches devices.
 
-`web/auth_middleware.py` wraps every request: session cookie or API key, first-use setup gate, login lockout, cross-site check. The session cookie is always `Secure` under `serve`.
+`web/auth_middleware.py` wraps every request: session cookie or API key, first-use setup gate, login lockout, cross-site check, and, with the login off, a host check that refuses a Host header that isn't one of the server's own names (`web/host_names.py`; it stops DNS rebinding). The session cookie is always `Secure` under `serve`. Inside it, `web/body_limit.py` refuses a request body over 8 MiB with 413 (the upload routes allow two files' worth), since the login route is open and a JSON body is read whole.
 
 ### The API
 

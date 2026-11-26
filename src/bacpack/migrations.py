@@ -579,6 +579,17 @@ def drop_triggers(connection: Connection) -> None:
         connection.exec_driver_sql(f"DROP TRIGGER main.{name}")
 
 
+def _triggers_current(connection: Connection) -> bool:
+    """True when main holds exactly the TRIGGERS set. SQLite stores each
+    statement as written, minus the `main.` after CREATE TRIGGER."""
+    stored = dict(
+        connection.exec_driver_sql(
+            "SELECT name, sql FROM main.sqlite_master WHERE type = 'trigger' AND name LIKE 'bacpack\\_%' ESCAPE '\\'"
+        ).all()
+    )
+    return stored == {name: f"CREATE TRIGGER {name} {body}" for name, body in TRIGGERS.items()}
+
+
 def ensure_triggers(engine: Engine) -> None:
     """Recreate exactly the TRIGGERS set; run last in init_db. One raw-SQL
     transaction (pysqlite commits each DDL under engine.begin()), so a
@@ -586,8 +597,17 @@ def ensure_triggers(engine: Engine) -> None:
     drop_triggers can't share it: a parent dying during the migrations
     leaves no triggers until the next successful start."""
     with engine.connect() as connection:
+        if _triggers_current(connection):
+            # BEGIN IMMEDIATE would also take the history file's write lock,
+            # which a device still running may hold past the busy timeout.
+            return
+        version = get_schema_version(connection, "main")
         try:
-            connection.execute(text("BEGIN IMMEDIATE"))
+            # A deferred BEGIN, then a main-only write before any read, takes
+            # main's write lock alone (BEGIN IMMEDIATE would also lock the
+            # history file) and can't fail at once on a read-then-write race.
+            connection.execute(text("BEGIN"))
+            set_schema_version(connection, version, "main")
             drop_triggers(connection)
             for name, body in TRIGGERS.items():
                 connection.exec_driver_sql(f"CREATE TRIGGER main.{name} {body}")

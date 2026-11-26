@@ -43,11 +43,16 @@ def test_pics_is_the_conformance_statement_of_the_running_version(web_client):
 
     r = web_client.get("/api/pics")
     assert r.status_code == 200
-    # Shown in the browser, not downloaded: text/markdown is saved to disk by most.
-    assert r.headers["content-type"].startswith("text/plain")
-    assert r.headers["content-disposition"].startswith("inline")
-    assert r.text == render_pics()
+    assert r.headers["content-type"].startswith("text/html")
+    assert "<table>" in r.text
     assert f"Product version: {bacpack_version()}" in r.text
+
+    raw = web_client.get("/api/pics.md")
+    assert raw.status_code == 200
+    # Shown in the browser, not downloaded: text/markdown is saved to disk by most.
+    assert raw.headers["content-type"].startswith("text/plain")
+    assert raw.headers["content-disposition"].startswith("inline")
+    assert raw.text == render_pics()
 
 
 def test_pics_needs_the_login_like_the_rest_of_the_api(web_client):
@@ -55,5 +60,7 @@ def test_pics_needs_the_login_like_the_rest_of_the_api(web_client):
 
     enable_login(web_client)
     assert web_client.get("/api/pics").status_code == 401
+    assert web_client.get("/api/pics.md").status_code == 401
     session_cookie(web_client)
     assert web_client.get("/api/pics").status_code == 200
+    assert web_client.get("/api/pics.md").status_code == 200

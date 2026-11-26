@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -121,6 +121,27 @@ describe("ConnectorsList", () => {
     expect(connectorsApi.create).toHaveBeenCalledWith(
       expect.objectContaining({ url: "https://lab.local/api", verify_tls: false })
     );
+  });
+
+  it("clears the header rows after an add, so the next connector doesn't get them", async () => {
+    const user = userEvent.setup();
+    renderList();
+    await user.click(await screen.findByRole("button", { name: "Add connector" }));
+    await user.type(screen.getByLabelText("Name"), "Lab");
+    await user.type(screen.getByLabelText("URL"), "https://lab.local/api");
+    await user.click(screen.getByRole("button", { name: "Add header" }));
+    await user.type(screen.getByLabelText("Header 1 name"), "X-Api-Key");
+    await user.type(screen.getByLabelText("Header 1 value"), "secret");
+    await user.click(addSubmit());
+    expect(await screen.findByText("Connector added.")).toBeInTheDocument();
+    expect(connectorsApi.create).toHaveBeenLastCalledWith(expect.objectContaining({ headers: { "X-Api-Key": "secret" } }));
+
+    expect(screen.queryByLabelText("Header 1 value")).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText("Name"), "Other");
+    await user.type(screen.getByLabelText("URL"), "https://other.example/api");
+    await user.click(addSubmit());
+    await waitFor(() => expect(connectorsApi.create).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(connectorsApi.create).mock.lastCall![0]).not.toHaveProperty("headers");
   });
 
   it("drops the added line once the next connector is being typed", async () => {

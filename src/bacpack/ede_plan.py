@@ -107,9 +107,25 @@ def to_raw(rows: List[EdeRow], *, device_instance: int) -> dict:
 _NAME_SEPARATORS = ".-_ :"
 
 
-def _starts_with(text: str, prefix: str) -> bool:
-    """`text` is `prefix`, or `prefix` followed by a separator and more."""
-    return text == prefix or (text.startswith(prefix) and text[len(prefix)] in _NAME_SEPARATORS)
+def _heads(text: str) -> List[str]:
+    """Every prefix `text` starts with in the matching sense: `text` itself,
+    and each head of it a separator follows."""
+    return [text] + [text[:i] for i, char in enumerate(text) if char in _NAME_SEPARATORS]
+
+
+class _PointIndex:
+    """Points by name, keyname and instance, so matching a log to a point is
+    a few lookups: a scan per log is O(logs x objects) on a large file."""
+
+    def __init__(self, points: List[Tuple[Tuple[str, int], str, Optional[str]]]) -> None:
+        self.by_name: Dict[str, List[Tuple[str, int]]] = {}
+        self.by_keyname: Dict[str, List[Tuple[str, int]]] = {}
+        self.by_instance: Dict[int, List[Tuple[str, int]]] = {}
+        for key, name, keyname in points:
+            self.by_name.setdefault(name, []).append(key)
+            if keyname:
+                self.by_keyname.setdefault(keyname, []).append(key)
+            self.by_instance.setdefault(key[1], []).append(key)
 
 
 def _typed_default(object_type: str, text: str) -> Optional[Any]:
@@ -424,13 +440,36 @@ class EdePlanner(Planner):
 
     # --- trend logs: a log row names a log, not what it records ---------------------
 
+    def _before_logs(self) -> None:
+        # The points and the trend log instances in use, indexed once. No
+        # point is added, removed or renamed while the logs are applied; a
+        # log that turns trending on adds its instance in _apply_log.
+        self._created = _PointIndex(self._created_points())
+        self._present: Optional[_PointIndex] = None
+        rows = list(self.rows.items())
+        if self.existing is not None and self.existing.mode == "merge":
+            self._present = _PointIndex(
+                [
+                    (key, point.name.strip(), point.keyname)
+                    for key, point in self.ede_rows.items()
+                    if key in self.existing.rows and key[0] not in _STAND_IN_NOTES
+                ]
+            )
+            rows += [(k, r) for k, r in self.existing.rows.items() if k not in self.rows]
+        self._log_instances: Dict[Optional[int], List[Tuple[Tuple[str, int], dict]]] = {}
+        for key, row in rows:
+            if row.get("trended"):
+                explicit = row.get("trend_log_instance")
+                instance = row.get("id") if explicit is None else explicit
+                self._log_instances.setdefault(instance, []).append((key, row))
+
     def _apply_log(self, entry: dict) -> None:
         """Turn trending on for the one point the log's name, keyname or
         instance number points to. A log that cannot be tied to exactly one
         point is skipped and listed, never attached to a likely one."""
         ede = self._ede(entry)
         name = ede.name.strip() if ede is not None else ""
-        found = self._match_log(entry, name, ede, self._created_points())
+        found = self._match_log(entry, name, ede, self._created)
         if found is None:
             self._skip_unmatched_log(entry, name, ede)
             return
@@ -466,6 +505,7 @@ class EdePlanner(Planner):
             self._skip(entry, "refused", problem)
             return
         self._log_names.add(name)
+        self._log_instances.setdefault(entry["instance"], []).append((key, row))
         self._logged[key] = (entry, before)
         if key in self.partials:
             self.partials[key].update(settings)
@@ -475,12 +515,8 @@ class EdePlanner(Planner):
         """Why Trend Log `instance` is taken, or None. Every trended row of the
         device counts: the planned ones (a kept object's saved settings
         included) and, in a merge, the ones already on it."""
-        rows = list(self.rows.items())
-        if self.existing is not None and self.existing.mode == "merge":
-            rows += [(k, r) for k, r in self.existing.rows.items() if k not in self.rows]
-        for other, row in rows:
-            explicit = row.get("trend_log_instance")
-            if other != key and row.get("trended") and (row.get("id") if explicit is None else explicit) == instance:
+        for other, row in self._log_instances.get(instance, ()):
+            if other != key:
                 return f"its instance {instance} is already the trend log of {row['name']!r}"
         return None
 
@@ -495,13 +531,8 @@ class EdePlanner(Planner):
 
     def _skip_unmatched_log(self, entry: dict, name: str, ede: Optional[EdeRow]) -> None:
         """In a merge, a log whose point is already on the device says so."""
-        if self.existing is not None and self.existing.mode == "merge":
-            present = [
-                (key, point.name.strip(), point.keyname)
-                for key, point in self.ede_rows.items()
-                if key in self.existing.rows and key[0] not in _STAND_IN_NOTES
-            ]
-            found = self._match_log(entry, name, ede, present)
+        if self._present is not None:
+            found = self._match_log(entry, name, ede, self._present)
             if found is not None:
                 point = self.ede_rows[found[0]].name.strip()
                 self._skip(entry, "already-present", f"its point {point!r} is already on the device")
@@ -513,22 +544,22 @@ class EdePlanner(Planner):
         entry: dict,
         name: str,
         ede: Optional[EdeRow],
-        points: List[Tuple[Tuple[str, int], str, Optional[str]]],
+        points: _PointIndex,
     ) -> Optional[Tuple[Tuple[str, int], str]]:
-        """((type, instance) of the point, what matched), or None. The first
-        rule that leaves exactly one candidate decides."""
+        """((type, instance) of the point, what matched), or None. A point
+        matches by name when its name is the log's or a head of it a
+        separator follows (keyname likewise); the longest match wins, and the
+        first rule that leaves exactly one candidate decides."""
         keyname = ede.keyname if ede is not None else None
         rules = (
-            ("name", [(len(point_name), k) for k, point_name, _ in points if _starts_with(name, point_name)]),
+            ("name", [(len(head), k) for head in _heads(name) for k in points.by_name.get(head, ())]),
             (
                 "keyname",
-                [
-                    (len(point_keyname), k)
-                    for k, _, point_keyname in points
-                    if keyname and point_keyname and _starts_with(keyname, point_keyname)
-                ],
+                [(len(head), k) for head in _heads(keyname) for k in points.by_keyname.get(head, ())]
+                if keyname
+                else [],
             ),
-            ("instance number", [(0, k) for k, _, _ in points if k[1] == entry["instance"]]),
+            ("instance number", [(0, k) for k in points.by_instance.get(entry["instance"], ())]),
         )
         for how, candidates in rules:
             if not candidates:

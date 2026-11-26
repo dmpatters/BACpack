@@ -7,6 +7,7 @@ import sys
 from dataclasses import replace
 
 import pytest
+from bacpypes3.apdu import ReadPropertyACK
 from bacpypes3.primitivedata import ObjectIdentifier
 
 from tests.scale import scenarios_devices as devices
@@ -67,12 +68,18 @@ async def test_starting_the_big_device(ctx_ro):
 
 async def test_reading_the_whole_object_list_does_not_block_the_loop(ctx_ro):
     seconds, resp, gap = await run_on_device_loop(ctx_ro, "devices.object_list_whole")
+    # A fast Error or Abort would otherwise pass the timing bounds.
+    assert isinstance(resp, ReadPropertyACK), resp
+    assert resp.propertyValue is not None
     assert gap < LOOP_BLOCK_LIMIT
     assert seconds < BIG_JOB_LIMIT
 
 
 async def test_reading_one_object_list_entry_is_quick(ctx_ro):
     seconds, resp, gap = await run_on_device_loop(ctx_ro, "devices.object_list_by_index")
+    assert isinstance(resp, ReadPropertyACK), resp
+    assert int(resp.propertyArrayIndex) == 2500
+    assert resp.propertyValue is not None
     assert gap < LOOP_BLOCK_LIMIT
     assert seconds < LOOP_BLOCK_LIMIT
 
@@ -141,7 +148,10 @@ async def test_config_import_dry_run_of_50_devices(ctx_ro):
 
 async def test_config_import_apply_of_50_devices(ctx_rw):
     seconds, response, gap = await run_on_web_loop(ctx_rw, "devices.config_import_apply_50")
-    assert _ok(response).json()["dry_run"] is False
+    body = _ok(response).json()
+    assert body["dry_run"] is False
+    # The apply changed something: every big-device object was edited.
+    assert len(body["devices_updated"]) >= 1
     assert gap < LOOP_BLOCK_LIMIT
     assert seconds < BIG_JOB_LIMIT
 

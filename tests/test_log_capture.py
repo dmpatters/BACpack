@@ -2,7 +2,9 @@
 """
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
+import gc
 import logging
 
 import pytest
@@ -21,6 +23,11 @@ def _reset_bacpack_logger():
     for h in list(logger.handlers):
         logger.removeHandler(h)
     logger.setLevel(logging.NOTSET)
+    for name in ("asyncio", "bacpypes3"):
+        library = logging.getLogger(name)
+        for h in list(library.handlers):
+            if isinstance(h, (SQLiteLogHandler, logging.StreamHandler)) and type(h).__module__ == "bacpack.log_capture":
+                library.removeHandler(h)
 
 
 @pytest.fixture()
@@ -303,3 +310,85 @@ def test_logs_page_logging_flushes_on_exit(session_factory):
     assert not _bacpack_logger().handlers
     with session_factory() as session:
         assert any("written inside the block" in e.message for e in session.query(LogEntry))
+
+
+# --- Errors logged by asyncio and bacpypes3 reach the Logs page ---------------
+# An exception in a loop callback or an unawaited task goes to the asyncio
+# logger, bacpypes3's own messages to bacpypes3.*. Under a service a device
+# process's stderr is the null device, so these must be stored too.
+
+
+def _rows(session_factory):
+    assert history_writer.flush_current()
+    with session_factory() as session:
+        return [(e.level, e.logger_name, e.message, e.device_id) for e in session.query(LogEntry)]
+
+
+def _add_device(session_factory):
+    with session_factory() as session:
+        session.add(Device(id=1, name="D"))
+        session.commit()
+
+
+@pytest.mark.asyncio
+async def test_an_exception_in_a_loop_callback_is_stored(session_factory):
+    _add_device(session_factory)
+    install_log_capture(session_factory, device_id=1)
+
+    def callback():
+        raise RuntimeError("timer callback broke")
+
+    asyncio.get_running_loop().call_soon(callback)
+    await asyncio.sleep(0.01)
+
+    [(level, name, message, device_id)] = _rows(session_factory)
+    assert (level, name, device_id) == ("ERROR", "asyncio", 1)
+    assert "timer callback broke" in message and "Traceback" in message
+
+
+@pytest.mark.asyncio
+async def test_an_unawaited_task_that_raises_is_stored(session_factory):
+    install_log_capture(session_factory)
+
+    async def task():
+        raise RuntimeError("task broke")
+
+    started = asyncio.ensure_future(task())
+    await asyncio.sleep(0.01)
+    del started
+    gc.collect()
+
+    rows = _rows(session_factory)
+    assert [r[1] for r in rows] == ["asyncio"]
+    assert "Task exception was never retrieved" in rows[0][2] and "task broke" in rows[0][2]
+
+
+def test_a_bacpypes3_warning_is_stored_and_its_debug_is_not(session_factory):
+    install_log_capture(session_factory)
+    logging.getLogger("bacpypes3.app").warning("a bacpypes3 warning")
+    logging.getLogger("bacpypes3.app").info("a bacpypes3 info line")
+    logging.getLogger("bacpypes3.app").debug("a bacpypes3 debug line")
+
+    assert [(r[0], r[1], r[2]) for r in _rows(session_factory)] == [("WARNING", "bacpypes3.app", "a bacpypes3 warning")]
+
+
+def test_library_errors_still_reach_the_console(session_factory, capsys):
+    install_log_capture(session_factory)
+    logging.getLogger("asyncio").error("loop trouble")
+    assert "loop trouble" in capsys.readouterr().err
+
+
+def test_reinstalling_does_not_stack_library_handlers(session_factory):
+    install_log_capture(session_factory)
+    before = len(logging.getLogger("asyncio").handlers)
+    install_log_capture(session_factory)
+    assert len(logging.getLogger("asyncio").handlers) == before
+
+
+def test_logs_page_logging_removes_the_library_handlers_on_exit(session_factory):
+    from bacpack.log_capture import logs_page_logging
+
+    before = list(logging.getLogger("asyncio").handlers)
+    with logs_page_logging(session_factory):
+        assert len(logging.getLogger("asyncio").handlers) > len(before)
+    assert logging.getLogger("asyncio").handlers == before

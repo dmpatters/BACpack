@@ -164,20 +164,20 @@ export default function DeviceSettingsTab({ deviceId }: { deviceId: number }) {
                 autoComplete="new-password"
                 value={newPassword}
                 // clearPassword stays once chosen: a typed value wins on Save, and
-                // deleting it again goes back to clearing, not to keeping.
+                // deleting it again goes back to clearing; only Keep password undoes it.
                 onChange={(e) => setNewPassword(e.target.value)}
               />
             </Field>
-            {passwordSet && !clearPassword && (
+            {passwordSet && (
               <Button
                 type="button"
                 small
                 onClick={() => {
-                  setClearPassword(true);
+                  setClearPassword(!clearPassword);
                   setNewPassword("");
                 }}
               >
-                Clear password
+                {clearPassword ? "Keep password" : "Clear password"}
               </Button>
             )}
           </Fieldset>

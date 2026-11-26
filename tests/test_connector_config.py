@@ -1,5 +1,6 @@
 import pytest
 
+from bacpack import connector_config
 from bacpack.connector_config import (
     ConnectorRuleError,
     check_json_path,
@@ -193,3 +194,30 @@ def test_missing_credentials_message_names_unreadable_values():
     assert missing_credentials_message(["password", "token"], ["password"]) == (
         "Missing credentials: password, token (the saved password can't be read; enter it again)"
     )
+
+
+@pytest.mark.parametrize(
+    "old, new, follows",
+    [
+        ("http://a.invalid/x", "http://a.invalid/y?q=1", True),
+        ("http://A.invalid/x", "http://a.INVALID/x", True),
+        ("http://a.invalid", "http://a.invalid:80/x", True),
+        ("http://a.invalid", "https://a.invalid", True),
+        ("http://a.invalid:80/x", "https://a.invalid:443/x", True),
+        ("https://a.invalid", "http://a.invalid", False),
+        ("http://a.invalid", "https://a.invalid:8443", False),
+        ("http://a.invalid:8080", "https://a.invalid", False),
+        ("http://a.invalid", "http://b.invalid", False),
+        ("http://a.invalid", "http://a.invalid:81", False),
+        ("https://a.invalid", "https://a.invalid:444", False),
+        ("", "http://a.invalid", False),
+        ("not a url", "http://a.invalid", False),
+        ("http://a.invalid", "", False),
+        ("http://", "http://", True),
+        (" http://a.invalid/x", " http://a.invalid/x", True),
+        ("not a url", "not a url", True),
+        ("http://", "http://a.invalid", False),
+    ],
+)
+def test_credentials_follow(old, new, follows):
+    assert connector_config.credentials_follow(old, new) is follows

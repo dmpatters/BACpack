@@ -345,8 +345,20 @@ def update_connector(
                     f"{'has' if len(missing) == 1 else 'have'} no json_path; set one before switching to json"
                 ),
             )
+    # Saved credentials never go to another origin: a new URL that they may
+    # not follow clears them, unless this same save supplies new ones.
+    keep_stored = not (
+        connector.type == "http-poll"
+        and "url" in updates
+        and not connector_config.credentials_follow(connector.url, updates["url"])
+    )
+    if not keep_stored:
+        for secret in ("auth_password", "auth_token"):
+            updates.setdefault(secret, None)
+        if "headers" not in updates and connector.headers:
+            updates["headers"] = {name: None for name in connector.headers}
     if "headers" in updates:
-        updates["headers"] = _header_values(updates["headers"], connector.headers)
+        updates["headers"] = _header_values(updates["headers"], connector.headers if keep_stored else None)
     if connector.type == "http-poll" and connector.enabled and updates.get("enabled") is False:
         release_http_mappings(connector.mappings)
     for field, value in updates.items():

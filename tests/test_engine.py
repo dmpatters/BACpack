@@ -1994,7 +1994,9 @@ async def test_a_cancel_after_a_save_that_landed_has_no_cause():
 
 async def _until(condition, what: str, seconds: float = 5.0) -> None:
     deadline = time.monotonic() + seconds
-    while not condition():
+    # In a thread: a condition that reads the database on the loop would add
+    # its own stalls to a loop-gap measurement it runs inside.
+    while not await asyncio.to_thread(condition):
         if time.monotonic() > deadline:
             pytest.fail(f"timed out waiting for {what}")
         await asyncio.sleep(0.01)

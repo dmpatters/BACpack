@@ -200,6 +200,22 @@ async def test_device_reports_utc_offset_and_daylight_savings_status():
     assert await app.device_object.read_property("daylightSavingsStatus") == device_clock.is_dst()
 
 
+@_needs_tzset
+@pytest.mark.asyncio
+async def test_device_reports_standard_utc_offset_and_dst_status_for_its_own_date(new_york_tz):
+    # A fixed zone: on a UTC host a hard-coded 0 / False would pass the test above.
+    device, objects = _device_and_objects()
+    app = build_application(device, objects)
+
+    device_clock.set_offset(device_clock.offset_for_local(2026, 7, 1, 12, 0, 0))
+    assert await app.device_object.read_property("utcOffset") == 300  # standard time, even in July
+    assert bool(await app.device_object.read_property("daylightSavingsStatus")) is True
+
+    device_clock.set_offset(device_clock.offset_for_local(2026, 1, 15, 12, 0, 0))
+    assert await app.device_object.read_property("utcOffset") == 300
+    assert bool(await app.device_object.read_property("daylightSavingsStatus")) is False
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "attr",

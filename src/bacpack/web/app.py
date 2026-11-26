@@ -36,6 +36,8 @@ from ..log_capture import install_log_capture
 from ..trending import TrendPruner, run_retention_task
 from .api import router as api_router
 from .auth_middleware import install_auth
+from .host_names import OwnNames, machine_names
+from .body_limit import LimitRequestBody
 from .json_guard import RejectUnpairedSurrogates
 
 def _is_api_path(path: str) -> bool:
@@ -150,6 +152,8 @@ def create_app(db_path: Optional[str] = None, *, process_factory=None) -> FastAP
 
         app.state.session_factory = session_factory
         app.state.data_dir = _data_dir(resolved_db_path)
+        # getfqdn can wait seconds on a reverse lookup, so never on a request.
+        app.state.own_names = OwnNames(app.state.data_dir, await asyncio.to_thread(machine_names))
         install_log_capture(session_factory)
         engine_kwargs: dict[str, Any] = {"db_path": resolved_db_path}
         if process_factory is not None:
@@ -240,6 +244,10 @@ def create_app(db_path: Optional[str] = None, *, process_factory=None) -> FastAP
     # Before install_auth: the later-added middleware is the outer one, so
     # an unauthenticated request is refused before its body is read.
     app.add_middleware(RejectUnpairedSurrogates)
+    # Outside the JSON guard, which reads the body, and inside the login
+    # check, which doesn't (its body reads run in another task, which would
+    # wrap the refusal in an exception group).
+    app.add_middleware(LimitRequestBody)
     install_auth(app)
 
     return app

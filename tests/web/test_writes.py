@@ -632,7 +632,9 @@ def test_binary_feed_values(web_client, value, queued):
     r = web_client.post("/api/feed/599001/binary-value/1", json={"value": value})
 
     assert r.status_code == 200, r.text
-    assert r.json()["value"] == queued
+    # True == 1 == 1.0 in Python: the type is part of what a client script reads.
+    echoed = r.json()["value"]
+    assert (type(echoed), echoed) == (type(queued), queued)
 
 
 @pytest.mark.parametrize("value", ["abc", 2, 0.5, "1", [1]])
@@ -657,6 +659,23 @@ def test_multi_state_feed_values(web_client, value, status):
     r = web_client.post("/api/feed/599001/multi-state-value/1", json={"value": value})
 
     assert r.status_code == status, r.text
+
+
+@pytest.mark.parametrize("kind", ["feed", "manual"])
+@pytest.mark.parametrize("object_type", ["analog-value", "multi-state-value"])
+def test_an_integer_too_large_for_a_float_is_a_400(web_client, kind, object_type):
+    # float() raises OverflowError, not ValueError, for such an integer.
+    _create_device(web_client)
+    _create_object(web_client, object_type=object_type, name="V-1", state_text=["Off", "On"] if "multi" in object_type else None)
+    _start(web_client)
+
+    r = web_client.post(
+        f"/api/{kind}/599001/{object_type}/1",
+        content='{"value": 1%s}' % ("0" * 400),
+        headers={"content-type": "application/json"},
+    )
+
+    assert r.status_code == 400, r.text
 
 
 def test_set_clock_on_a_starting_device_is_handed_off_as_pending(web_client):

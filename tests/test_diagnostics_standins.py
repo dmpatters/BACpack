@@ -447,3 +447,89 @@ def test_the_scan_does_not_slow_down_when_many_values_share_a_first_word():
         t.scan(line)
     elapsed = time.perf_counter() - started
     assert elapsed < 15, elapsed  # 61 s with a lookup per registered length; about 1 s with the trie
+
+
+# --- every exported field is classed ---
+#
+# standin_config replaces a hand-written list of fields and keeps the rest
+# real, so a new free-text column would go out real in a stand-in zip. Each
+# exported key must be in one of the two sets: a new key fails here until
+# someone decides which.
+
+_DEVICE_REPLACED = {"name", "description", "location", "vendor_name", "bind_address", "foreign_bbmd", "bbmd_peers"}
+_DEVICE_KEPT = {
+    "id", "vendor_identifier", "backup_failure_timeout", "objects",
+    "network_role", "foreign_ttl", "bbmd_links",
+}
+_OBJECT_REPLACED = {
+    "name", "trend_log_name", "description", "active_text", "inactive_text", "state_text",
+    "notification_recipient_list",
+}
+_OBJECT_KEPT = {
+    "object_type", "instance_number", "units", "bacnet_writable", "out_of_service_default",
+    "relinquish_default", "start_value", "trended", "trend_mode", "trend_interval_seconds",
+    "trend_sample_cap", "trend_log_instance", "trend_reporting_enabled", "trend_notification_threshold",
+    "trend_notification_class_instance", "trend_event_enable", "trend_notify_type",
+    "trend_event_detection_enable", "schedule_value_type", "schedule_default", "weekly_schedule",
+    "exception_schedule", "schedule_effective_start", "schedule_effective_end", "schedule_priority",
+    "schedule_write_targets", "date_list", "alarming_enabled", "notification_class_instance",
+    "alarm_time_delay", "alarm_time_delay_normal", "alarm_notify_type", "alarm_event_enable",
+    "alarm_high_limit", "alarm_low_limit", "alarm_deadband", "alarm_limit_enable", "alarm_value",
+    "alarm_values", "alarm_event_detection_enable", "notification_priority", "notification_ack_required",
+    "simulation",
+}
+_CONNECTOR_REPLACED = {"name", "url", "auth_username", "remote_address", "headers", "mappings", "write_mappings"}
+_CONNECTOR_KEPT = {
+    "type", "enabled", "poll_interval_seconds", "timeout_seconds", "response_format", "auth_type",
+    "verify_tls", "device", "remote_device_instance", "rewrite_interval_seconds",
+}
+_MAPPING_REPLACED = {"json_path", "value_map"}
+_MAPPING_KEPT = {
+    "device", "object", "scale", "offset", "remote_object_type", "remote_object_instance",
+    "remote_property", "remote_array_index", "direction", "priority",
+}
+
+
+def test_every_exported_field_is_classed_for_stand_in_mode():
+    from bacpack import config_connectors, config_io
+
+    mapping_keys = {
+        *config_connectors._HTTP_MAPPING_KEYS, *config_connectors._BACNET_MAPPING_KEYS,
+        *config_connectors._WRITE_MAPPING_KEYS,
+    }
+    connector_keys = {*config_connectors._HTTP_KEYS, *config_connectors._BACNET_KEYS}
+    cases = (
+        ("device", config_io._DEVICE_KEYS, _DEVICE_REPLACED, _DEVICE_KEPT),
+        ("object", config_io.OBJECT_FIELDS, _OBJECT_REPLACED, _OBJECT_KEPT),
+        ("connector", connector_keys, _CONNECTOR_REPLACED, _CONNECTOR_KEPT),
+        ("connector mapping", mapping_keys, _MAPPING_REPLACED, _MAPPING_KEPT),
+    )
+    for what, exported, replaced, kept in cases:
+        assert not replaced & kept, (what, replaced & kept)
+        unclassed = set(exported) - replaced - kept
+        assert not unclassed, (
+            f"new exported {what} field(s) {sorted(unclassed)}: replace them in "
+            "diagnostics_standins.standin_config, or list them here as safe to keep real"
+        )
+        # A listed field that no longer exists is a stale entry.
+        assert (replaced | kept) <= set(exported), (what, sorted((replaced | kept) - set(exported)))
+
+
+def test_every_field_classed_as_replaced_is_replaced_by_standin_config():
+    marker = "Zq-Marker"
+    values = {
+        "name": marker, "description": marker, "location": marker, "vendor_name": marker,
+        "bind_address": "192.168.7.7/24", "foreign_bbmd": "192.168.7.8:47808", "bbmd_peers": ["192.168.7.9:47808"],
+        "trend_log_name": marker, "active_text": marker, "inactive_text": marker, "state_text": [marker],
+        "url": f"https://{marker}.example/{marker}", "auth_username": marker, "remote_address": "192.168.7.10",
+        "json_path": marker, "value_map": {marker: 1},
+    }
+    device = {field: values[field] for field in _DEVICE_REPLACED}
+    obj = {"object_type": "analog-value", **{f: values[f] for f in _OBJECT_REPLACED - {"notification_recipient_list"}}}
+    obj["notification_recipient_list"] = [{"recipient": {"kind": "address", "address": "192.168.7.11:47808"}}]
+    device["objects"] = [obj]
+    connector = {f: values[f] for f in _CONNECTOR_REPLACED - {"mappings", "write_mappings", "headers"}}
+    connector["headers"] = {marker: "v"}
+    connector["mappings"] = [{f: values[f] for f in _MAPPING_REPLACED}]
+    out = standin_config({"devices": [device], "connectors": [connector]}, StandIns())
+    assert marker not in repr(out) and "192.168.7." not in repr(out), out

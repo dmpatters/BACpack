@@ -30,9 +30,12 @@ export default function HeadersEditor({
   onChange,
   missing = [],
   unreadable = [],
+  clearing = false,
 }: {
   rows: HeaderRow[];
   onChange: (rows: HeaderRow[]) => void;
+  // The pending save clears the saved values (a URL on another host), so a blank one stays unset.
+  clearing?: boolean;
   // The connector's missing_credentials, and the ones among them whose saved
   // value can't be decrypted.
   missing?: string[];
@@ -44,7 +47,8 @@ export default function HeadersEditor({
   const help = (row: HeaderRow) => {
     if (row.savedName === null || row.savedName !== row.name.trim()) return undefined;
     if (unreadable.includes(`header ${row.savedName}`)) return "Saved value can't be read. Enter it again.";
-    return missing.includes(`header ${row.savedName}`) ? "Not set." : "Blank keeps the saved value.";
+    if (missing.includes(`header ${row.savedName}`)) return "Not set.";
+    return clearing ? "Blank leaves the value unset." : "Blank keeps the saved value.";
   };
 
   return (

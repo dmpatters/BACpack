@@ -6,7 +6,7 @@ Protocol Implementation Conformance Statement, laid out per ASHRAE 135 Annex A (
 
 - Vendor: BACpack open-source project. The vendor identifier and vendor name are set per device.
 - Product name: BACpack
-- Product version: 1.0.0
+- Product version: 1.0.1
 - Description: an open-source BACnet/IP server, a device simulator and gateway for testing BAS/BMS clients and integrations.
 - No redundancy or high availability.
 
@@ -356,8 +356,8 @@ Can be created: no. Can be deleted: no.
 | description | no |  |
 | present-value | no |  |
 | effective-period | yes | writable only when the object's BACnet-writable setting is on |
-| weekly-schedule | yes | writable only when the object's BACnet-writable setting is on |
-| exception-schedule | yes | writable only when the object's BACnet-writable setting is on |
+| weekly-schedule | yes | writable only when the object's BACnet-writable setting is on; times to the minute (seconds or hundredths are refused) |
+| exception-schedule | yes | writable only when the object's BACnet-writable setting is on; times to the minute (seconds or hundredths are refused) |
 | schedule-default | yes | writable only when the object's BACnet-writable setting is on |
 | list-of-object-property-references | yes | writable only when the object's BACnet-writable setting is on |
 | priority-for-writing | yes | writable only when the object's BACnet-writable setting is on |

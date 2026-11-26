@@ -131,7 +131,9 @@ export default function ConnectorsList() {
     mutationFn: () => connectorsApi.create(connectorCreateBody({ ...form, deviceId })),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["connectors"] });
-      setForm((f) => ({ ...f, name: "", url: "", authUsername: "", authPassword: "", authToken: "" }));
+      // Every credential clears, headers too: their values are password
+      // fields, so a kept one wouldn't show and would go to the next URL.
+      setForm((f) => ({ ...f, name: "", url: "", authUsername: "", authPassword: "", authToken: "", headers: [] }));
       setEditedSinceAdd(false);
     },
   });

@@ -30,7 +30,7 @@ export default function GeneralTab({
 
   const save = useMutation({
     mutationFn: (sent: ObjectFormState) =>
-      objectsApi.update(deviceId, obj.id, formStateToPatch(sent, obj.object_type, toFormState(obj))),
+      objectsApi.update(deviceId, obj.id, formStateToPatch(sent, obj.object_type, baseline)),
     onSuccess: (_result, sent) => {
       setBaseline(sent);
       queryClient.invalidateQueries({ queryKey: ["objects", deviceId] });

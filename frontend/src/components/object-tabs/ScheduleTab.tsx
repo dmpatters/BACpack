@@ -379,7 +379,7 @@ function ScheduleEditor({
   function submit() {
     if (!problem.canSubmit()) return;
     const sent = current;
-    onSave(changedFields(schedulePatch(sent), schedulePatch(loadedScheduleFields(obj))), () => setBaseline(sent));
+    onSave(changedFields(schedulePatch(sent), schedulePatch(baseline)), () => setBaseline(sent));
   }
 
   return (

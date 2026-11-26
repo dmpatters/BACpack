@@ -176,6 +176,14 @@ def revoke_api_key(session: Session, key_id: int) -> Optional[ApiKey]:
     return row
 
 
+def revoke_all_api_keys(session: Session) -> list[ApiKey]:
+    now = timeutil.db_utc_now()
+    rows = list(session.scalars(select(ApiKey).where(ApiKey.revoked_at.is_(None))))
+    for row in rows:
+        row.revoked_at = now
+    return rows
+
+
 def list_api_keys(session: Session) -> list[ApiKey]:
     return list(session.scalars(select(ApiKey).where(ApiKey.revoked_at.is_(None)).order_by(ApiKey.id)))
 

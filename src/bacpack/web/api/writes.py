@@ -56,7 +56,8 @@ def _validate_queued_value(obj: BacnetObject, value, *, manual: bool):
     if object_type in ANALOG_TYPES:
         try:
             finite_float(value)
-        except (TypeError, ValueError):
+        # OverflowError: an integer too large for a float.
+        except (TypeError, ValueError, OverflowError):
             raise HTTPException(
                 status_code=400,
                 detail=f"value {value!r} is not a valid number for {object_type}",
@@ -80,7 +81,8 @@ def _validate_queued_value(obj: BacnetObject, value, *, manual: bool):
         if (
             isinstance(value, (int, float))
             and not isinstance(value, bool)
-            and float(value).is_integer()
+            # Not float(value): it overflows on a large int, already whole.
+            and (isinstance(value, int) or value.is_integer())
             and 1 <= value <= states
         ):
             return int(value)

@@ -25,6 +25,11 @@ def _set_running(client, device_id=599001, status="running"):
         session.commit()
 
 
+def _compact(response) -> str:
+    """The body's JSON text without whitespace, so the type of each value is visible."""
+    return "".join(response.text.split())
+
+
 @pytest.fixture()
 def live(web_client):
     _create_device(web_client)
@@ -37,13 +42,13 @@ def live(web_client):
 def test_request_and_response_shape(live, route):
     r = live.post(f"/api/{route}/599001/analog-value/1", json={"value": 21.5})
     assert r.status_code == 200
-    # Exact: adding a response field means updating this assertion on purpose.
-    assert r.json() == {"queued": True, "value": 21.5}
+    # Exact, as raw text: adding a response field means updating this assertion on purpose,
+    # and a value echoed as 1 vs true vs 1.0 differs here though Python compares them equal.
+    assert _compact(r) == '{"queued":true,"value":21.5}'
     assert live.post(f"/api/{route}/599001/analog-value/1", json={}).status_code == 422
-    assert live.post(f"/api/{route}/599001/analog-value/1", json={"value": None}).json() == {
-        "queued": True,
-        "value": None,
-    }
+    assert _compact(live.post(f"/api/{route}/599001/analog-value/1", json={"value": None})) == (
+        '{"queued":true,"value":null}'
+    )
 
 
 @pytest.mark.parametrize("route", ["feed", "manual"])
@@ -72,10 +77,14 @@ def test_an_input_takes_a_feed_but_not_a_manual_write(live):
 def test_binary_and_multistate_values(live):
     _create_object(live, object_type="binary-value", instance_number=1, name="BV-1")
     _create_object(live, object_type="multi-state-value", instance_number=1, name="MSV-1", state_text=["a", "b"])
-    for value in ("active", "inactive", True, 0, 1):
-        assert live.post("/api/feed/599001/binary-value/1", json={"value": value}).status_code == 200
+    for value, echoed in (("active", '"active"'), ("inactive", '"inactive"'), (True, "true"), (0, "0"), (1, "1")):
+        r = live.post("/api/feed/599001/binary-value/1", json={"value": value})
+        assert r.status_code == 200
+        assert _compact(r) == '{"queued":true,"value":%s}' % echoed
     assert live.post("/api/feed/599001/binary-value/1", json={"value": 2}).status_code == 400
-    assert live.post("/api/feed/599001/multi-state-value/1", json={"value": 2}).json()["value"] == 2
+    assert _compact(live.post("/api/feed/599001/multi-state-value/1", json={"value": 2})) == (
+        '{"queued":true,"value":2}'
+    )
     assert live.post("/api/feed/599001/multi-state-value/1", json={"value": 3}).status_code == 400
 
 
@@ -88,7 +97,7 @@ def test_api_key_authenticates_the_write_routes(live, route):
     assert live.post(url, json={"value": 1}, headers={"Authorization": "Bearer bpk_wrong"}).status_code == 401
     r = live.post(url, json={"value": 1}, headers={"Authorization": f"Bearer {key}"})
     assert r.status_code == 200
-    assert r.json() == {"queued": True, "value": 1}
+    assert _compact(r) == '{"queued":true,"value":1}'
 
 
 @pytest.mark.parametrize("route", ["feed", "manual"])

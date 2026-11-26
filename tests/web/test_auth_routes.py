@@ -10,7 +10,7 @@ from bacpack.models import LogEntry
 from bacpack.web.auth_middleware import SESSION_COOKIE
 from tests.web._helpers import LOGIN_PASSWORD, enable_login, make_key, session_cookie, set_login_mode
 
-ORIGIN = {"Origin": "http://testserver"}
+ORIGIN = {"Origin": "http://127.0.0.1"}
 
 
 def _security_logs(client):
@@ -100,6 +100,33 @@ def test_login_ok_sets_cookie_and_logs(web_client):
     assert any("signed in" in e.message for e in _security_logs(web_client))
 
 
+def test_a_login_checked_before_a_password_change_gets_no_session(web_client, monkeypatch):
+    # The change ends every session; a login that checked the old password
+    # just before it must not add a fresh one just after.
+    from bacpack import auth
+    from bacpack.models import ServerSettings, WebSession
+
+    enable_login(web_client)
+    real = auth.verify_password
+
+    def verify_then_change(password, stored):
+        ok = real(password, stored)
+        with web_client.app.state.session_factory() as session:
+            settings = session.query(ServerSettings).one()
+            settings.login_epoch = (settings.login_epoch or 0) + 1
+            session.query(WebSession).delete()
+            session.commit()
+        return ok
+
+    monkeypatch.setattr(auth, "verify_password", verify_then_change)
+    r = _login(web_client)
+
+    assert r.status_code == 401, r.text
+    assert SESSION_COOKIE not in r.cookies
+    with web_client.app.state.session_factory() as session:
+        assert session.query(WebSession).count() == 0
+
+
 def test_wrong_password_is_401_and_logs_without_the_attempted_text(web_client):
     enable_login(web_client)
     assert _login(web_client, "admin", "TYPO-secret-password").status_code == 401
@@ -184,7 +211,7 @@ async def test_concurrent_logins_from_one_address_cannot_outrun_the_lockout(web_
 
     monkeypatch.setattr(auth, "verify_password", slow_verify)
     transport = httpx.ASGITransport(app=web_client.app, client=("9.9.9.9", 1234))
-    async with httpx.AsyncClient(transport=transport, base_url="http://testserver", headers=ORIGIN) as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1", headers=ORIGIN) as client:
         results = await asyncio.gather(
             *[
                 client.post("/api/auth/login", json={"username": "admin", "password": f"wrong password {i}"})

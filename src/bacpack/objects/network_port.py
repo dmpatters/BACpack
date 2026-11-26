@@ -21,12 +21,18 @@ class ReadOnlyNetworkPortObject(WritePropertyAllowlisted, NetworkPortObject):
 
 # IPv4 with an optional /prefix and :port. Checked before bacpypes3's
 # parsers, which would look anything else up as a hostname.
-_IPV4_FORM = re.compile(r"\d{1,3}(?:\.\d{1,3}){3}(?:/\d{1,2})?(?::\d{1,5})?")
+_IPV4_FORM = re.compile(r"\d{1,3}(?:\.\d{1,3}){3}(?:/\d{1,2})?(?::(\d{1,5}))?")
 
 
 def _require_ipv4_form(field: str, text: str) -> None:
-    if not isinstance(text, str) or not _IPV4_FORM.fullmatch(text):
+    match = _IPV4_FORM.fullmatch(text) if isinstance(text, str) else None
+    if match is None:
         raise ValueError(f"invalid {field} {text!r}: use an IPv4 address, e.g. 192.168.1.50/24:47808")
+    # bacpypes3's Address() doesn't range-check: :0 binds a random port no
+    # client can find, and :99999 fails only when the device starts.
+    port = match.group(1)
+    if port is not None and not 1 <= int(port) <= 65535:
+        raise ValueError(f"invalid {field} {text!r}: the port must be 1-65535")
 
 
 def build_network_port_object(

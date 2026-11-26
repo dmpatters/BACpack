@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 import time
 
-from bacpypes3.apdu import ReadPropertyRequest
+from bacpypes3.apdu import ReadPropertyACK, ReadPropertyRequest
 
 from .bacnet_requests import read_config_file, reinitialize, send
 from .harness import LoopLagMonitor
@@ -38,7 +38,7 @@ async def probe_during(ctx: Context, operation) -> dict:
             resp = await send(
                 app, ReadPropertyRequest(objectIdentifier=("analog-value", 1), propertyIdentifier="presentValue")
             )
-            assert resp is not None
+            assert isinstance(resp, ReadPropertyACK), resp
             latencies.append(time.perf_counter() - intended)
 
     async def heavy():

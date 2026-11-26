@@ -128,6 +128,42 @@ def _nc():
     return BacnetObject(object_type="notification-class", instance_number=1, name="NC-1")
 
 
+_RECIPIENT = {
+    "recipient": {"kind": "address", "address": "192.168.1.200"},
+    "valid_days": [True] * 7,
+    "from_time": "00:00:00.00",
+    "to_time": "23:59:59.99",
+    "transitions": [True, True, True],
+    "confirmed": False,
+    "process_identifier": 1,
+}
+
+
+def _nc_with_recipient():
+    return BacnetObject(
+        object_type="notification-class", instance_number=1, name="NC-1", notification_recipient_list=[_RECIPIENT]
+    )
+
+
+def _capture_notifications(app) -> list:
+    """The event notifications the app sends, in order."""
+    sent = []
+
+    def capture(apdu):
+        sent.append(apdu)
+        future = asyncio.get_running_loop().create_future()
+        future.set_result(None)
+        return future
+
+    app.request = capture
+    return sent
+
+
+async def _settle():
+    for _ in range(20):
+        await asyncio.sleep(0)
+
+
 async def _in_high_alarm(app):
     ai = app.get_object_name("AI-1")
     await asyncio.sleep(0)  # _post_init links the notification class
@@ -140,30 +176,53 @@ async def _in_high_alarm(app):
 
 async def test_alarm_state_carries_and_still_out_of_range_does_not_refire():
     row = _alarming_ai()
-    app = _app(_nc(), row)
+    app = _app(_nc_with_recipient(), row)
+    sent = _capture_notifications(app)
     old = await _in_high_alarm(app)
+    await _settle()
+    assert [str(n.toState) for n in sent] == ["high-limit"]
     stamp = old.eventTimeStamps[0]
     acked = list(old.ackedTransitions)
     new = await _swap(app, row, alarm_high_limit=120.0)
-    for _ in range(3):
-        await asyncio.sleep(0)
+    await _settle()
     assert new.eventState.attr == "highLimit"
     assert new.eventTimeStamps[0] == stamp
     assert list(new.ackedTransitions) == acked
+    # A rebuilt object that started normal would go to highLimit again and notify a second time.
+    assert [str(n.toState) for n in sent] == ["high-limit"]
 
 
 async def test_raising_the_limit_past_the_value_returns_to_normal():
     row = _alarming_ai()
-    app = _app(_nc(), row)
+    app = _app(_nc_with_recipient(), row)
+    sent = _capture_notifications(app)
     old = await _in_high_alarm(app)
     offnormal_stamp, normal_stamp = old.eventTimeStamps[0], old.eventTimeStamps[2]
     new = await _swap(app, row, alarm_high_limit=200.0)
-    for _ in range(3):
-        await asyncio.sleep(0)
+    await _settle()
     assert new.eventState.attr == "normal"
+    assert [str(n.toState) for n in sent] == ["high-limit", "normal"]
     # Through a to-normal transition from the carried alarm, not a fresh start.
     assert new.eventTimeStamps[0] == offnormal_stamp
     assert new.eventTimeStamps[2] != normal_stamp
+
+
+async def test_turning_detection_off_resets_the_event_state_instead_of_carrying_it():
+    # ASHRAE 135: with Event_Detection_Enable FALSE, Acked_Transitions and
+    # Event_Time_Stamps go back to their initial values. Carried, the
+    # to-normal bit stayed unacknowledged with no time stamp to ack it by.
+    from bacpack.objects.alarm_config import unset_time_stamp
+
+    row = _alarming_ai()
+    app = _app(_nc(), row)
+    old = await _in_high_alarm(app)
+    assert list(old.ackedTransitions) != [True, True, True]
+    new = await _swap(app, row, alarm_event_detection_enable=False)
+    for _ in range(3):
+        await asyncio.sleep(0)
+    assert new.eventState.attr == "normal"
+    assert list(new.ackedTransitions) == [True, True, True]
+    assert list(new.eventTimeStamps) == [unset_time_stamp() for _ in range(3)]
 
 
 async def test_retire_cancels_a_pending_alarm_transition():

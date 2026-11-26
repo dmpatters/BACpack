@@ -1464,27 +1464,56 @@ def test_over_limit_uses_the_hard_cap_when_the_soft_limit_is_off(session_factory
             assert trending.trend_over_limit(session) is expected
 
 
-def test_prune_chunk_reads_the_counter_after_taking_the_write_lock(session_factory, monkeypatch):
-    # A device's write landing between the chunk's first read and its delete
-    # must not be overwritten by a total computed from the stale read.
+def _a_device_write_before_the_first(session_factory, verb: str) -> list:
+    """A device's sample write (its row and the counter, one commit) from a
+    second connection, attempted just before the first `verb` statement
+    (SELECT or DELETE) on the samples runs. A chunk that holds the history write lock by then makes it wait and
+    give up, as a device's busy wait would; one that doesn't lets it commit.
+    Returns one entry per attempt, True when it committed."""
+    import sqlite3
+
+    from sqlalchemy import event
+
+    from bacpack.db import history_db_path
+
+    engine = session_factory.kw["bind"]
+    path = history_db_path(engine.url.database)
+    attempts = []
+
+    def device_write(conn, cursor, statement, parameters, context, executemany):
+        if attempts or not statement.lstrip().upper().startswith(verb) or "TREND_SAMPLES" not in statement.upper():
+            return
+        other = sqlite3.connect(str(path), timeout=0.2)
+        try:
+            other.execute(
+                "INSERT INTO trend_samples (object_id, sequence, timestamp, value, clock_offset, kind) "
+                "VALUES (999, 1, '2099-01-01 00:00:00', 1.0, 0.0, 'value')"
+            )
+            other.execute("UPDATE history_counters SET trend_total_sample_count = trend_total_sample_count + 1")
+            other.commit()
+            attempts.append(True)
+        except sqlite3.OperationalError:
+            attempts.append(False)
+        finally:
+            other.close()
+
+    event.listen(engine, "before_cursor_execute", device_write)
+    return attempts
+
+
+def test_prune_chunk_does_not_lose_a_device_write_that_lands_before_its_delete(session_factory, monkeypatch):
+    # The counter is adjusted from a value read earlier in the chunk; a device
+    # write that committed after that read would be overwritten, so the chunk
+    # must hold the write lock from before its read.
     monkeypatch.setattr(trending, "BYTES_PER_TREND_SAMPLE", 100_000)  # 1 MB = 10 samples
     monkeypatch.setattr(trending, "_BACKGROUND_PRUNE_CHUNK_SIZE", 4)
-    object_id = _seed_samples(session_factory, 15)[0]
-    real_limit = trending.effective_trend_limit_bytes
-    fired = []
+    _seed_samples(session_factory, 15)
+    attempts = _a_device_write_before_the_first(session_factory, "DELETE")
 
-    def limit_then_a_device_write(settings):
-        value = real_limit(settings)
-        if not fired:
-            fired.append(1)
-            record_sample(session_factory, object_id, 99.0)
-        return value
+    assert trending.prune_chunk_to_limit(session_factory) == 4
 
-    monkeypatch.setattr(trending, "effective_trend_limit_bytes", limit_then_a_device_write)
-
-    trending.prune_chunk_to_limit(session_factory)
-
-    assert _counter(session_factory) == len(_sample_values(session_factory))
+    assert attempts == [False]
+    assert _counter(session_factory) == len(_sample_values(session_factory)) == 11
 
 
 def _statements(session_factory):
@@ -1947,47 +1976,20 @@ def test_global_prune_slices_its_id_lists(session_factory, monkeypatch):
 
 
 def test_a_retention_chunk_takes_the_history_lock_before_it_reads(session_factory, monkeypatch):
-    # A transaction that reads and then writes gets "database is locked" at
-    # once, without the busy handler, when another connection wrote in
-    # between; a running device writes samples all the time.
-    import sqlite3
-
-    from sqlalchemy import event
-
+    # The chunk's first statement on the samples finds the write lock already
+    # held: a device's write at that moment waits instead of committing between
+    # the chunk's reads and its delete.
     from bacpack import timeutil
-    from bacpack.db import history_db_path
 
     t0 = dt.datetime(2026, 3, 1, 10, 0, 0)
     object_id = _stamped_log(session_factory, 1, [t0, t0 + dt.timedelta(minutes=1), t0 + dt.timedelta(days=5)])
     _retention_days(session_factory, 1)
     monkeypatch.setattr(timeutil, "db_utc_now", lambda: t0 + dt.timedelta(days=2))
+    attempts = _a_device_write_before_the_first(session_factory, "SELECT")
 
-    engine = session_factory.kw["bind"]
-    path = history_db_path(engine.url.database)
-    interference = []
+    assert prune_old_samples(session_factory) == 2
 
-    def other_writer_commits(conn, cursor, statement, parameters, context, executemany):
-        if interference or not statement.lstrip().upper().startswith("SELECT") or "trend_samples" not in statement:
-            return
-        interference.append(1)
-        other = sqlite3.connect(str(path), timeout=0.2)
-        try:
-            other.execute(
-                "INSERT INTO trend_samples (object_id, sequence, timestamp, value, clock_offset, kind) "
-                "VALUES (999, 1, '2026-03-09 00:00:00', 1.0, 0.0, 'value')"
-            )
-            other.commit()
-        except sqlite3.OperationalError:
-            pass  # the chunk holds the write lock: this writer waits, as a device's would
-        finally:
-            other.close()
-
-    event.listen(engine, "after_cursor_execute", other_writer_commits)
-    try:
-        assert prune_old_samples(session_factory) == 2
-    finally:
-        event.remove(engine, "after_cursor_execute", other_writer_commits)
-    assert interference
+    assert attempts == [False]
     _assert_gap_free(session_factory, object_id, [3])
 
 

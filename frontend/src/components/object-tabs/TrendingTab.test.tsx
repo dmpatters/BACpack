@@ -343,6 +343,20 @@ describe("TrendingTab", () => {
     expect(screen.getByLabelText("Trend mode")).toHaveValue("cov");
     expect(screen.getByLabelText("Sample cap")).toHaveValue(100);
   });
+
+  it("saves a change back to the old value before the object refetches", async () => {
+    vi.mocked(trendApi.range).mockResolvedValue(EMPTY_RANGE);
+    vi.mocked(objectsApi.update).mockReset().mockResolvedValue(makeObj());
+    const user = userEvent.setup();
+    renderTab(makeObj({ trended: false }));
+    await user.click(screen.getByLabelText(/trended/i));
+    await user.click(screen.getByRole("button", { name: /save/i }));
+    await screen.findByText("Saved.");
+    await user.click(screen.getByLabelText(/trended/i));
+    await user.click(screen.getByRole("button", { name: /save/i }));
+    await waitFor(() => expect(objectsApi.update).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(objectsApi.update).mock.calls[1][2]).toMatchObject({ trended: false });
+  });
 });
 
 describe("TrendingTab chart", () => {

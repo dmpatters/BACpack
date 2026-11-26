@@ -69,6 +69,7 @@ async def test_no_notification_without_a_subscription():
     app.cov_notification = lambda cov, apdu: notifications.append(apdu)
 
     await write_feed_value(av, 42.0)
+    await _let_the_loop_run()
 
     assert notifications == []
 
@@ -348,9 +349,9 @@ async def test_going_into_alarm_reports_the_in_alarm_flag():
 from bacpack import bacpypes3_compat
 
 
-async def _subscribe_with(app, **fields):
+async def _subscribe_with(app, process_id=1, **fields):
     request = SubscribeCOVRequest(
-        subscriberProcessIdentifier=1,
+        subscriberProcessIdentifier=process_id,
         monitoredObjectIdentifier=("analog-value", 1),
         **fields,
     )
@@ -364,6 +365,13 @@ async def _subscribe_with(app, **fields):
     await app.do_SubscribeCOVRequest(request)
     await asyncio.sleep(0)
     return responses
+
+
+async def _let_the_loop_run():
+    # A COV notification is scheduled with call_soon, so an empty list right
+    # after the write proves nothing until the loop has turned.
+    for _ in range(5):
+        await asyncio.sleep(0)
 
 
 def _av_app():
@@ -416,3 +424,81 @@ async def test_renewing_without_lifetime_makes_the_subscription_permanent():
     assert [type(r).__name__ for r in responses] == ["SimpleAckPDU"]
     [state] = bacpypes3_compat.take_cov_subscriptions(app, av)
     assert state.lifetime == 0
+
+
+# --- SubscribeCOV: Lifetime needs Issue_Confirmed_Notifications; renewals ---------
+
+
+@pytest.mark.asyncio
+async def test_lifetime_without_the_confirmed_flag_is_refused_and_creates_nothing():
+    from bacpypes3.errors import ExecutionError
+
+    app, av, notifications = _av_app()
+
+    with pytest.raises(ExecutionError) as caught:
+        await _subscribe_with(app, lifetime=60)
+    await _let_the_loop_run()
+
+    assert caught.value.errorClass == "services"
+    assert caught.value.errorCode == "missingRequiredParameter"
+    assert notifications == []
+    assert bacpypes3_compat.take_cov_subscriptions(app, av) == []
+
+
+@pytest.mark.asyncio
+async def test_a_refused_renewal_leaves_the_existing_subscription_alone():
+    from bacpypes3.errors import ExecutionError
+
+    app, av, notifications = _av_app()
+    await _subscribe_with(app, issueConfirmedNotifications=True, lifetime=600)
+    notifications.clear()
+
+    with pytest.raises(ExecutionError):
+        await _subscribe_with(app, lifetime=5)
+    await _let_the_loop_run()
+
+    assert notifications == []
+    [state] = bacpypes3_compat.take_cov_subscriptions(app, av)
+    assert state.confirmed is True
+    assert state.lifetime > 5
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("first, second", [(False, True), (True, False)])
+async def test_a_renewal_switches_between_confirmed_and_unconfirmed(first, second):
+    app, av, notifications = _av_app()
+    await _subscribe_with(app, issueConfirmedNotifications=first, lifetime=60)
+    await _subscribe_with(app, issueConfirmedNotifications=second, lifetime=120)
+    notifications.clear()
+
+    await write_feed_value(av, 42.0)
+    await asyncio.sleep(0)
+
+    expected = "ConfirmedCOVNotificationRequest" if second else "UnconfirmedCOVNotificationRequest"
+    assert [type(n).__name__ for n in notifications] == [expected]
+    [state] = bacpypes3_compat.take_cov_subscriptions(app, av)
+    assert state.confirmed is second
+    assert state.lifetime > 60
+
+
+@pytest.mark.asyncio
+async def test_a_renewal_changes_only_its_own_subscription():
+    app, av, notifications = _av_app()
+    await _subscribe_with(app, process_id=1, issueConfirmedNotifications=False, lifetime=60)
+    await _subscribe_with(app, process_id=2, issueConfirmedNotifications=False, lifetime=60)
+
+    await _subscribe_with(app, process_id=1, issueConfirmedNotifications=True, lifetime=60)
+
+    states = bacpypes3_compat.take_cov_subscriptions(app, av)
+    assert sorted((s.proc_id, s.confirmed) for s in states) == [(1, True), (2, False)]
+
+
+@pytest.mark.asyncio
+async def test_a_renewal_with_the_same_mode_still_renews_the_lifetime():
+    app, av, notifications = _av_app()
+    await _subscribe_with(app, issueConfirmedNotifications=True, lifetime=60)
+    await _subscribe_with(app, issueConfirmedNotifications=True, lifetime=300)
+
+    [state] = bacpypes3_compat.take_cov_subscriptions(app, av)
+    assert state.confirmed is True
+    assert state.lifetime > 60

@@ -1217,7 +1217,7 @@ async def test_schedule_config_write_recomputes_present_value_immediately():
     )
     assert obj.presentValue.get_value() != 77.0  # not the fixture's value, and not today's write yet
 
-    past = (dt.datetime.now() - dt.timedelta(minutes=1)).strftime("%H:%M:%S")
+    past = "00:00:00"  # always already started today
     week = [
         DailySchedule(daySchedule=[TimeValue(time=Time(past), value=Real(77.0))]) for _ in range(7)
     ]
@@ -2413,3 +2413,45 @@ async def test_bacnet_write_of_a_local_reference_to_another_property_is_refused(
         await sched.write_property("listOfObjectPropertyReferences", [ref])
 
     assert exc.value.errorCode == "value-out-of-range"
+
+
+# --- Times finer than a minute are refused -----------------------------------
+# A schedule's times are kept to the minute. A write with seconds or
+# hundredths is refused rather than acknowledged and then cut.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("time", ["07:30:30", "07:30:00.50"])
+async def test_a_weekly_schedule_time_with_seconds_is_refused(time):
+    obj = _typed_schedule("analog")
+    week_before = obj.weeklySchedule
+    day = DailySchedule(daySchedule=[TimeValue(time=Time(time), value=Real(70.0))])
+
+    with pytest.raises(PropertyError) as exc:
+        await obj.write_property("weeklySchedule", day, index=1)
+
+    assert exc.value.errorCode == "value-out-of-range"
+    assert obj.weeklySchedule == week_before
+
+
+@pytest.mark.asyncio
+async def test_an_exception_schedule_time_with_seconds_is_refused():
+    obj = _typed_schedule("analog")
+    event = SpecialEvent(
+        period=SpecialEventPeriod(calendarEntry=CalendarEntry(date=Date((126, 12, 25, 255)))),
+        listOfTimeValues=[TimeValue(time=Time("09:00:15"), value=Real(1.0))],
+        eventPriority=Unsigned(1),
+    )
+
+    with pytest.raises(PropertyError) as exc:
+        await obj.write_property("exceptionSchedule", [event])
+
+    assert exc.value.errorCode == "value-out-of-range"
+
+
+@pytest.mark.asyncio
+async def test_a_weekly_schedule_time_to_the_minute_is_still_accepted():
+    obj = _typed_schedule("analog")
+    day = DailySchedule(daySchedule=[TimeValue(time=Time("07:30:00.00"), value=Real(70.0))])
+    await obj.write_property("weeklySchedule", day, index=1)
+    assert tuple(obj.weeklySchedule[0].daySchedule[0].time) == (7, 30, 0, 0)

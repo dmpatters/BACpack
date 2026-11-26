@@ -50,7 +50,7 @@ def web_client(ctx: Context) -> TestClient:
 
         stack.enter_context(mock.patch("bacpack.web.app.run_retention_task", idle))
         app = create_app(db_path=str(ctx.db_path), process_factory=never_spawn)
-        client = stack.enter_context(TestClient(app))
+        client = stack.enter_context(TestClient(app, base_url="http://127.0.0.1"))
         ctx.state["client"] = client
         ctx.on_close(stack.close)
     return ctx.state["client"]

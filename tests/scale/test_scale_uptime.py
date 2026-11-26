@@ -86,8 +86,13 @@ async def test_client_request_retention_prune(ctx_rw):
 async def test_logging_traffic_on_a_full_table(ctx_rw):
     with StatementRecorder(ctx_rw.engine) as rec:
         async with LoopLagMonitor() as lag:
-            seconds, count = await run(ctx_rw, "uptime.traffic_add_full_table")
-    assert count == uptime.TRAFFIC_BURST
+            seconds, result = await run(ctx_rw, "uptime.traffic_add_full_table")
+    count = uptime.TRAFFIC_BURST
+    # Every packet reached the table: the scenario's own constant and a full
+    # table's size say nothing, and an empty statement list has no scans.
+    assert result["flushed"]
+    assert result["added"] == count
+    assert any(s.lstrip().upper().startswith("INSERT") and "traffic_log_entries" in s for s, _ in rec.statements)
     assert table_scans(ctx_rw.engine, rec.statements, {"traffic_log_entries"}) == []
     assert lag.max_gap < LOOP_BLOCK_LIMIT
     assert seconds / count < LOOP_BLOCK_LIMIT

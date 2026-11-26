@@ -28,6 +28,7 @@ import { ClipCell, RowActions, SortHeader, TableFrame } from "../components/Data
 import { ResultPill } from "../components/StatusPill";
 import MappingValueCell from "../components/MappingValueCell";
 import { useDeviceLives } from "../utils/useLiveState";
+import { urlClearsCredentials } from "../utils/credentialsFollow";
 import TableToolbar, { TOOLBAR_MIN_ROWS, countText, toolbarSearch } from "../components/TableToolbar";
 import { parseId } from "../utils/ids";
 import { matchesSearch, sortRows, useSort } from "../utils/tableSort";
@@ -448,9 +449,15 @@ function ConnectorSettingsForm({
     setFields((f) => ({ ...f, [key]: value }));
   const missing = connector.missing_credentials;
   const unreadable = connector.unreadable_credentials ?? [];
+  const hasSavedCredentials =
+    (connector.auth_type === "basic" && !missing.includes("password")) ||
+    (connector.auth_type === "bearer" && !missing.includes("token")) ||
+    connector.header_names.some((name) => !missing.includes(`header ${name}`));
+  const clearing = hasSavedCredentials && urlClearsCredentials(baseline.url, fields.url);
   const credentialHelp = (label: string, noun: string) => {
     if (unreadable.includes(label)) return `Saved ${noun} can't be read. Enter it again.`;
-    return missing.includes(label) ? "Not set." : `Blank keeps the saved ${noun}.`;
+    if (missing.includes(label)) return "Not set.";
+    return clearing ? `Blank leaves the ${noun} unset.` : `Blank keeps the saved ${noun}.`;
   };
 
   // A refetch (after a save, or another tab's) refreshes only what the user
@@ -525,6 +532,12 @@ function ConnectorSettingsForm({
             />
           </Field>
         </FormGrid>
+        {clearing && (
+          <Callout tone="warn">
+            Saving this URL clears the saved password, token and header values: they aren't sent to a different host,
+            port or scheme. Enter them again here.
+          </Callout>
+        )}
         <CheckField label="Enabled" checked={fields.enabled} onChange={(e) => set("enabled", e.target.checked)} />
         <FormGrid>
           <Field label="Poll interval (s)">
@@ -594,7 +607,7 @@ function ConnectorSettingsForm({
         </FormGrid>
         <VerifyTlsField id="c_verify_tls" checked={fields.verifyTls} onChange={(verifyTls) => set("verifyTls", verifyTls)} />
         <Fieldset legend="Headers">
-          <HeadersEditor rows={headers} onChange={setHeaders} missing={missing} unreadable={unreadable} />
+          <HeadersEditor rows={headers} onChange={setHeaders} missing={missing} unreadable={unreadable} clearing={clearing} />
         </Fieldset>
         <FormActions>
           <Button variant="primary" type="submit">

@@ -71,7 +71,8 @@ async def test_range_api_narrow_window_does_not_grow_with_the_log(ctx_ro):
     for name, object_id in (("full", ctx_ro.ids.full_log_ids[0]), ("twin", ctx_ro.ids.small_twin_id)):
         params = trends.narrow_params(ctx_ro, object_id)
         with StatementRecorder(engine) as rec:
-            _ok(trends.get_range(ctx_ro, object_id, params))
+            # An empty reply would be quick for any table size.
+            assert _ok(trends.get_range(ctx_ro, object_id, params)).json()["samples"]
         work[name] = rec
     assert table_scans(engine, work["full"].statements, BIG_TABLES) == []
     assert not grew_with_table(work["twin"].vm_steps, work["full"].vm_steps), (
@@ -143,8 +144,9 @@ async def test_deleting_a_full_log_does_not_block_the_web_loop(ctx_rw):
 
 
 async def test_a_sampler_pass_over_500_objects_stays_within_its_bound(ctx_rw):
-    seconds, due = await run(ctx_rw, "trends.sampler_tick_500")
-    assert due == 500
+    seconds, result = await run(ctx_rw, "trends.sampler_tick_500")
+    assert result["due"] == 500
+    assert result["added"] == 500
     assert seconds < BIG_JOB_LIMIT
 
 
@@ -152,5 +154,6 @@ async def test_a_sampler_pass_over_500_objects_does_not_block_the_device_loop(ct
     scenario = SCENARIOS["trends.sampler_tick_500"]
     await scenario.setup(ctx_rw)
     async with LoopLagMonitor() as lag:
-        await execute(replace(scenario, setup=None), ctx_rw)
+        _, result = await execute(replace(scenario, setup=None), ctx_rw)
+    assert result["added"] == 500
     assert lag.max_gap < LOOP_BLOCK_LIMIT

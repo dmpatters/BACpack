@@ -12,6 +12,7 @@ from bacpack import trend_buffer
 from bacpack.models import BacnetObject, Device, TrendSample
 from bacpack.objects import trend_log
 from bacpack.trending import _MAX_SEQUENCE
+from tests.local_time import host_zone  # noqa: F401  (a fixture)
 from tests.scale.harness import StatementRecorder, grew_with_table
 
 FULL = 32767
@@ -399,7 +400,7 @@ def check_against_oracle(session_factory, object_id, rng, references=200):
 
 
 @pytest.mark.parametrize("seed", [1, 2, 3])
-def test_by_time_matches_the_full_scan_on_randomised_logs(session_factory, seed):
+def test_by_time_matches_the_full_scan_on_randomised_logs(session_factory, seed, host_zone):
     rng = random.Random(seed)
     object_id = make_object(session_factory)
     insert_rows(session_factory, object_id, messy_rows(rng))
@@ -411,7 +412,7 @@ def test_by_time_matches_the_full_scan_on_randomised_logs(session_factory, seed)
     check_against_oracle(session_factory, object_id, rng)
 
 
-def test_by_time_with_untrusted_bookkeeping_still_answers_correctly(session_factory):
+def test_by_time_with_untrusted_bookkeeping_still_answers_correctly(session_factory, host_zone):
     rng = random.Random(7)
     object_id = make_object(session_factory)
     rows = messy_rows(rng)
@@ -430,7 +431,7 @@ def test_by_time_with_untrusted_bookkeeping_still_answers_correctly(session_fact
     check_against_oracle(session_factory, object_id, rng)
 
 
-def test_by_time_on_a_log_the_upgrade_migration_started(session_factory):
+def test_by_time_on_a_log_the_upgrade_migration_started(session_factory, host_zone):
     rng = random.Random(11)
     object_id = make_object(session_factory)
     insert_rows(session_factory, object_id, messy_rows(rng))

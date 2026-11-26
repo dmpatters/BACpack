@@ -105,15 +105,24 @@ def client_request_retention(ctx: Context):
 @scenario("uptime.traffic_add_full_table", area="uptime", dataset="install", writes=True)
 async def traffic_add_full_table(ctx: Context):
     """200 packets logged one after another on a device whose traffic table
-    is full, yielding to the loop between them as a served device does."""
-    writer = HistoryWriter(ctx.session_factory, device_id=ctx.ids.big_device_id)
+    is full, yielding to the loop between them as a served device does.
+    Returns how many of them reached the table and whether the flush finished."""
+    device_id = ctx.ids.big_device_id
+    query = "SELECT COALESCE(MAX(id), 0) FROM history.traffic_log_entries WHERE device_id = ?"
+    with ctx.engine.connect() as connection:
+        newest = connection.exec_driver_sql(query, (device_id,)).scalar()
+    writer = HistoryWriter(ctx.session_factory, device_id=device_id)
     writer.start()
     try:
-        log = TrafficLog(writer=writer, device_id=ctx.ids.big_device_id)
+        log = TrafficLog(writer=writer, device_id=device_id)
         for n in range(TRAFFIC_BURST):
             log.add("read-property", f"192.168.1.60 -> analog-value:{n} presentValue")
             await asyncio.sleep(0)
-        await asyncio.to_thread(writer.flush, 60.0)
+        flushed = await asyncio.to_thread(writer.flush, 60.0)
     finally:
         writer.close()
-    return TRAFFIC_BURST
+    with ctx.engine.connect() as connection:
+        added = connection.exec_driver_sql(
+            "SELECT COUNT(*) FROM history.traffic_log_entries WHERE device_id = ? AND id > ?", (device_id, newest)
+        ).scalar()
+    return {"added": added, "flushed": flushed}

@@ -212,12 +212,20 @@ async def _started_sampler(ctx: Context) -> None:
 async def sampler_tick_500(ctx: Context):
     """One pass of the real TrendSampler, its writes included, with every one
     of its 500 interval objects due. Waiting for the due times to move on
-    isn't enough: the pass moves them before it writes."""
+    isn't enough: the pass moves them before it writes. Returns the objects
+    due and the samples that reached the table: the pass logs and swallows a
+    failed read or write and still moves the due times on."""
     sampler = ctx.state["sampler"]
     now = asyncio.get_running_loop().time()
     for object_id in list(sampler._due):
         sampler._due[object_id] = now
+    with ctx.engine.connect() as connection:
+        newest = connection.exec_driver_sql("SELECT COALESCE(MAX(id), 0) FROM history.trend_samples").scalar()
     await sampler._sample_due()
-    return len(sampler._due)
+    with ctx.engine.connect() as connection:
+        added = connection.exec_driver_sql(
+            "SELECT COUNT(*) FROM history.trend_samples WHERE id > ?", (newest,)
+        ).scalar()
+    return {"due": len(sampler._due), "added": added}
 
 

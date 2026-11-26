@@ -140,7 +140,7 @@ def test_reset_while_the_web_app_runs_unlocks_a_locked_ip_and_kills_old_sessions
     session_cookie(web_client)
     old_token = web_client.cookies.get("bacpack_session")
     web_client.cookies.clear()
-    origin = {"Origin": "http://testserver"}
+    origin = {"Origin": "http://127.0.0.1"}
     for _ in range(5):
         web_client.post("/api/auth/login", json={"username": "admin", "password": "wrong wrong wrong"}, headers=origin)
     locked = web_client.post("/api/auth/login", json={"username": "admin", "password": PASSWORD}, headers=origin)

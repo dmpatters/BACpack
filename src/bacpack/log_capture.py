@@ -47,8 +47,9 @@ class SQLiteLogHandler(logging.Handler):
 
 def install_log_capture(session_factory, *, device_id: Optional[int] = None) -> None:
     """Wire SQLiteLogHandler into the `bacpack` logger for this process
-    (device_id=None in the parent). Idempotent: replaces the handlers it
-    installed before, since tests create a fresh app per test.
+    (device_id=None in the parent), and at WARNING into `asyncio` and
+    `bacpypes3`. Idempotent: replaces the handlers it installed before,
+    since tests create a fresh app per test.
 
     The WARNING StreamHandler keeps console output: Python's lastResort
     handler stops firing once any handler exists in a logger's chain.
@@ -70,6 +71,50 @@ def install_log_capture(session_factory, *, device_id: Optional[int] = None) -> 
     console_handler.setLevel(logging.WARNING)
     logger.addHandler(console_handler)
 
+    for name in _LIBRARY_LOGGERS:
+        library = logging.getLogger(name)
+        _remove_library_handlers(library)
+        library_db = _LibraryDBHandler(writer, device_id=device_id)
+        library_db.setLevel(logging.WARNING)
+        library.addHandler(library_db)
+        library_console = _LibraryConsoleHandler()
+        library_console.setLevel(logging.WARNING)
+        library.addHandler(library_console)
+
+
+# An exception in a loop callback or an unawaited task is logged on `asyncio`
+# (with its traceback, by the loop's default exception handler); bacpypes3
+# logs on `bacpypes3.*`. Under a service a device process's stderr is the
+# null device, so without these they'd be lost. WARNING and up only: the
+# library debug output stays off.
+_LIBRARY_LOGGERS = ("asyncio", "bacpypes3")
+
+
+class _LibraryDBHandler(SQLiteLogHandler):
+    pass
+
+
+class _LibraryConsoleHandler(logging.StreamHandler):
+    """A handler anywhere in the chain turns off Python's lastResort output,
+    so the console needs its own."""
+
+
+def _remove_library_handlers(library: logging.Logger) -> None:
+    for handler in list(library.handlers):
+        if isinstance(handler, (_LibraryDBHandler, _LibraryConsoleHandler)):
+            library.removeHandler(handler)
+
+
+def remove_log_capture_handlers() -> None:
+    """Take out every handler install_log_capture added, on `bacpack` and on
+    the library loggers."""
+    logger = logging.getLogger("bacpack")
+    for handler in list(logger.handlers):
+        if isinstance(handler, (SQLiteLogHandler, logging.StreamHandler)):
+            logger.removeHandler(handler)
+    for name in _LIBRARY_LOGGERS:
+        _remove_library_handlers(logging.getLogger(name))
+
 
 @contextmanager
 def logs_page_logging(session_factory):
@@ -80,10 +125,7 @@ def logs_page_logging(session_factory):
         yield
     finally:
         history_writer.close_current()
-        logger = logging.getLogger("bacpack")
-        for handler in list(logger.handlers):
-            if isinstance(handler, (SQLiteLogHandler, logging.StreamHandler)):
-                logger.removeHandler(handler)
+        remove_log_capture_handlers()
 
 
 def prune_old_log_entries(session_factory) -> int:

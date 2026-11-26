@@ -35,6 +35,7 @@ from .connector_config import (
     check_remote_point_given,
     check_write_source,
     check_write_target_free,
+    credentials_follow,
     missing_credentials,
 )
 from .connectors import release_http_mappings
@@ -545,6 +546,8 @@ def _point_sort_key(point: tuple) -> tuple:
 def _missing_credentials(connector: dict, existing: Connector | None) -> list[str]:
     if connector["type"] != "http-poll":
         return []
+    if existing is not None and not credentials_follow(existing.url, connector["url"]):
+        existing = None
     stored_headers = (existing.headers or {}) if existing is not None else {}
     return missing_credentials(
         auth_type=connector["auth_type"],
@@ -671,7 +674,9 @@ _READ_FIELDS = (
 def apply_connector_plan(session: Session, plan: ConnectorPlan) -> None:
     """Write the plan. Call it after the sync's objects are flushed, so a
     mapping can name a new object. Stored credentials stay: a password,
-    token, or header value is only ever set on the Connectors page."""
+    token, or header value is only ever set on the Connectors page. The
+    exception is a url the credentials may not follow (another origin, see
+    credentials_follow): they are cleared, and the plan lists them as missing."""
     # Rows the sync deleted (an object's mappings go with it) mustn't linger
     # in the connectors' collections.
     session.expire_all()
@@ -725,10 +730,14 @@ def _update_connector(row: Connector, connector: dict, release_http_mappings) ->
     bacnet = connector["type"] == "bacnet"
     if not bacnet and row.enabled and not connector["enabled"]:
         release_http_mappings(row.mappings)
+    follows = bacnet or credentials_follow(row.url, connector["url"])
     for name in _BACNET_FIELDS if bacnet else _HTTP_FIELDS:
         setattr(row, name, connector[name])
     if not bacnet:
-        stored = row.headers or {}
+        if not follows:
+            row.auth_password = None
+            row.auth_token = None
+        stored = (row.headers or {}) if follows else {}
         row.headers = {name: stored.get(name, "") for name in connector["headers"]} or None
 
 

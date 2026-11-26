@@ -121,7 +121,7 @@ def test_cookie_post_with_matching_origin_or_referer_is_allowed(web_client):
     assert r.status_code == 201
     del web_client.headers["Origin"]
     r = web_client.post(
-        "/api/devices", json={"id": 2, "name": "B"}, headers={"Referer": "http://testserver/devices"}
+        "/api/devices", json={"id": 2, "name": "B"}, headers={"Referer": "http://127.0.0.1/devices"}
     )
     assert r.status_code == 201
 
@@ -193,7 +193,7 @@ def test_cookie_is_secure_over_plain_http_when_the_launcher_marked_https(web_cli
     r = web_client.post(
         "/api/auth/login",
         json={"username": "admin", "password": LOGIN_PASSWORD},
-        headers={"Origin": "http://testserver"},
+        headers={"Origin": "http://127.0.0.1"},
     )
     assert r.status_code == 200
     assert "secure" in r.headers["set-cookie"].lower()

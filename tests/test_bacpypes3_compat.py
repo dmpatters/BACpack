@@ -146,6 +146,7 @@ FINGERPRINTS = {
     "bacpypes3.service.cov.ChangeOfValueServices.cov_notification": "413003edb5eaaf42",
     "bacpypes3.service.cov.ChangeOfValueServices.do_SubscribeCOVRequest": "8a451bee353f56c4",
     "bacpypes3.service.cov.Subscription.__init__": "dc4b63b9ad476462",
+    "bacpypes3.service.cov.Subscription.renew_subscription": "9b8dc97ed2cbff02",
     "bacpypes3.app.DeviceInfoCache.set_device_info": "d550cc447b903f21",
     "bacpypes3.service.device.WhoIsFuture.match": "2750cee65d2b6789",
     "bacpypes3.service.device.WhoIsIAmServices.do_IAmRequest": "0cfa66b94532c36a",
@@ -1079,14 +1080,14 @@ def _i_am(instance=2, source="127.0.0.2"):
     return i_am
 
 
-def _destination(recipient):
+def _destination(recipient, confirmed=False):
     return SimpleNamespace(
         validDays=[True] * 7,
         fromTime=bacpypes3_compat.Time("00:00:00.00"),
         toTime=bacpypes3_compat.Time("23:59:59.99"),
         transitions=[True, True, True],
         recipient=recipient,
-        issueConfirmedNotifications=False,
+        issueConfirmedNotifications=confirmed,
         processIdentifier=5,
     )
 
@@ -1095,7 +1096,7 @@ def _device_recipient(instance=2):
     return SimpleNamespace(device=("device", instance), address=None)
 
 
-def _notifying(recipients, who_is_result, suppressed=False, delay=0.0, who_is_error=None):
+def _notifying(recipients, who_is_result, suppressed=False, delay=0.0, who_is_error=None, reply=None):
     """An algorithm whose monitored object's app is a stand-in: a real
     device-info cache, a who_is that records its calls (answering after
     `delay`, or raising `who_is_error`), a request that records what would
@@ -1118,7 +1119,10 @@ def _notifying(recipients, who_is_result, suppressed=False, delay=0.0, who_is_er
     def request(apdu):
         sent.append(apdu)
         future = asyncio.get_running_loop().create_future()
-        future.set_result(None)
+        if isinstance(reply, BaseException):
+            future.set_exception(reply)
+        else:
+            future.set_result(None)
         return future
 
     app = SimpleNamespace(
@@ -1235,3 +1239,78 @@ async def test_no_who_is_is_sent_while_dcc_suppresses_initiation(caplog):
         await bacpypes3_compat._send_notifications_by_weekday(algorithm, dict(_PARAMETERS))
     assert calls == [] and sent == []
     assert not [r for r in caplog.records if r.name == "bacpack.bacpypes3_compat"]
+
+
+# --- A refused or unanswered confirmed notification is logged ----------------
+
+from bacpypes3.apdu import AbortPDU, Error, RejectPDU
+
+
+def _compat_warnings(caplog):
+    return [r.getMessage() for r in caplog.records if r.name == "bacpack.bacpypes3_compat"]
+
+
+def _address_recipient():
+    return SimpleNamespace(device=None, address=DeviceAddress("192.168.1.77"))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "reply, outcome",
+    [
+        (RejectPDU(reason="unrecognizedService"), "refused, reject: unrecognized-service"),
+        (AbortPDU(reason="outOfResources"), "refused, abort: out-of-resources"),
+        (
+            Error(errorClass="services", errorCode="serviceRequestDenied", service_choice=2),
+            "refused, error: services: service-request-denied",
+        ),
+        (AbortPDU(reason="noResponse"), "no reply"),
+        (RuntimeError("socket closed"), "not sent: socket closed"),
+    ],
+)
+async def test_a_refused_confirmed_notification_is_logged_with_the_reply(caplog, reply, outcome):
+    algorithm, app, calls, sent = _notifying([_destination(_address_recipient(), confirmed=True)], [], reply=reply)
+    with caplog.at_level(logging.WARNING, logger="bacpack.bacpypes3_compat"):
+        await bacpypes3_compat._send_notifications_by_weekday(algorithm, dict(_PARAMETERS))
+    assert len(sent) == 1
+    [line] = _compat_warnings(caplog)
+    assert line.startswith('event notification from analog-input:1 "AI-1" to 192.168.1.77, ')
+    assert "process ID 5" in line and "to-offnormal" in line
+    assert line.endswith(outcome)
+
+
+@pytest.mark.asyncio
+async def test_a_delivered_notification_logs_nothing(caplog):
+    algorithm, app, calls, sent = _notifying([_destination(_address_recipient(), confirmed=True)], [])
+    with caplog.at_level(logging.WARNING, logger="bacpack.bacpypes3_compat"):
+        await bacpypes3_compat._send_notifications_by_weekday(algorithm, dict(_PARAMETERS))
+    assert len(sent) == 1 and _compat_warnings(caplog) == []
+
+
+@pytest.mark.asyncio
+async def test_a_refused_notification_to_a_device_recipient_names_the_device_and_its_address(caplog):
+    algorithm, app, calls, sent = _notifying(
+        [_destination(_device_recipient(), confirmed=True)], [_i_am()], reply=RejectPDU(reason="unrecognizedService")
+    )
+    with caplog.at_level(logging.WARNING, logger="bacpack.bacpypes3_compat"):
+        await bacpypes3_compat._send_notifications_by_weekday(algorithm, dict(_PARAMETERS))
+    [line] = _compat_warnings(caplog)
+    assert " to device 2 at 127.0.0.2, " in line
+
+
+@pytest.mark.asyncio
+async def test_refusals_from_one_recipient_are_logged_once_a_minute_with_a_count(monkeypatch, caplog):
+    now = real_time.monotonic()
+    monkeypatch.setattr(bacpypes3_compat.time, "monotonic", lambda: now)
+    algorithm, app, calls, sent = _notifying(
+        [_destination(_address_recipient(), confirmed=True)], [], reply=RejectPDU(reason="unrecognizedService")
+    )
+    with caplog.at_level(logging.WARNING, logger="bacpack.bacpypes3_compat"):
+        for _ in range(3):
+            await bacpypes3_compat._send_notifications_by_weekday(algorithm, dict(_PARAMETERS))
+        assert len(_compat_warnings(caplog)) == 1
+        monkeypatch.setattr(bacpypes3_compat.time, "monotonic", lambda: now + 61)
+        await bacpypes3_compat._send_notifications_by_weekday(algorithm, dict(_PARAMETERS))
+    lines = _compat_warnings(caplog)
+    assert len(lines) == 2 and lines[1].endswith("(2 more since the last)")
+    assert len(sent) == 4

@@ -458,6 +458,50 @@ describe("Dashboard sample building load", () => {
     await vi.waitFor(() => expect(router.state.location.pathname).toBe("/devices"));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
+
+  it("shows what the load did on the page once the panel has closed", async () => {
+    const user = userEvent.setup();
+    vi.mocked(devicesApi.list).mockResolvedValue([] as never);
+    vi.mocked(engineApi.status).mockResolvedValue([] as never);
+    vi.mocked(sampleApi.plan).mockResolvedValue({
+      devices: [{ id: 4190001, name: "Sample AHU-1", role: "bbmd", object_count: 13, bind_address: "127.0.0.1/8:47808", port: 47808 }],
+      refusal: null,
+      notes: [],
+    });
+    vi.mocked(sampleApi.load).mockResolvedValue({
+      devices: [
+        { id: 4190001, name: "Sample AHU-1", bind_address: null, port: 47808, started: true, error: null },
+        { id: 4190101, name: "Sample VAV-1", bind_address: null, port: 47809, started: false, error: "port in use" },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const router = createMemoryRouter(
+      [
+        {
+          path: "*",
+          element: (
+            <Routes>
+              <Route path="/devices" element={<Dashboard />} />
+              <Route path="/devices/sample" element={<Dashboard />} />
+            </Routes>
+          ),
+        },
+      ],
+      { initialEntries: ["/devices/sample"] }
+    );
+    render(
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    );
+    const panel = await screen.findByRole("dialog", { name: "Sample building" });
+    await user.click(await within(panel).findByRole("button", { name: "Load" }));
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe("/devices"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      await screen.findByText("Loaded the sample building; started 1 of 2 devices. Sample VAV-1: port in use")
+    ).toBeInTheDocument();
+  });
 });
 
 describe("Dashboard no-login warning", () => {

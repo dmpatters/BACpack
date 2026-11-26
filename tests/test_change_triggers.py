@@ -119,10 +119,80 @@ def test_migrations_run_with_no_triggers_in_place(tmp_path, monkeypatch):
         return real(engine_, schema)
 
     monkeypatch.setattr(migrations, "run_pending_migrations", recording)
+    monkeypatch.setattr(migrations, "MIGRATIONS", [*migrations.MIGRATIONS, lambda connection: None])
     init_db(engine)
 
     assert seen and all(names == [] for names in seen)
     assert _trigger_names(engine) == sorted(migrations.TRIGGERS)
+
+
+def test_a_restart_with_nothing_to_migrate_leaves_the_triggers_in_place(tmp_path, monkeypatch):
+    engine = make_engine(tmp_path / "t.db")
+    init_db(engine)
+    seen = []
+    real = migrations.run_pending_migrations
+
+    def recording(engine_, schema="main"):
+        seen.append(_trigger_names(engine_))
+        return real(engine_, schema)
+
+    monkeypatch.setattr(migrations, "run_pending_migrations", recording)
+    init_db(engine)
+
+    assert seen and all(names == sorted(migrations.TRIGGERS) for names in seen)
+
+
+def _stored_triggers(engine):
+    with engine.connect() as connection:
+        return dict(
+            connection.exec_driver_sql(
+                "SELECT name, sql FROM main.sqlite_master WHERE type = 'trigger' AND name LIKE 'bacpack\\_%' ESCAPE '\\'"
+            ).all()
+        )
+
+
+def _damage_triggers(engine):
+    name = next(iter(migrations.TRIGGERS))
+    with engine.begin() as connection:
+        connection.exec_driver_sql(f"DROP TRIGGER main.{name}")
+        connection.exec_driver_sql(f"CREATE TRIGGER main.{name} AFTER DELETE ON main.devices BEGIN SELECT 1; END")
+        connection.exec_driver_sql("CREATE TRIGGER main.bacpack_old_x AFTER DELETE ON main.devices BEGIN SELECT 1; END")
+
+
+def _expected_triggers():
+    return {name: f"CREATE TRIGGER {name} {body}" for name, body in migrations.TRIGGERS.items()}
+
+
+def test_a_restart_with_nothing_to_migrate_rebuilds_differing_triggers(tmp_path):
+    engine = make_engine(tmp_path / "t.db")
+    init_db(engine)
+    _damage_triggers(engine)
+    assert _stored_triggers(engine) != _expected_triggers()
+
+    init_db(engine)
+
+    assert _stored_triggers(engine) == _expected_triggers()
+
+
+def test_a_trigger_rebuild_needs_no_history_write_lock(tmp_path, monkeypatch):
+    import sqlite3
+
+    from bacpack import db
+
+    path = tmp_path / "t.db"
+    monkeypatch.setattr(db, "BUSY_TIMEOUT_SECONDS", 0.2)
+    engine = make_engine(path)
+    init_db(engine)
+    _damage_triggers(engine)
+    holder = sqlite3.connect(db.history_db_path(path), isolation_level=None)
+    holder.execute("BEGIN IMMEDIATE")
+    try:
+        init_db(engine)
+    finally:
+        holder.execute("ROLLBACK")
+        holder.close()
+
+    assert _stored_triggers(engine) == _expected_triggers()
 
 
 def test_object_insert_update_delete_bump_only_its_device(session_factory):

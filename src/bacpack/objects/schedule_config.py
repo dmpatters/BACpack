@@ -337,6 +337,10 @@ def atomic_value_to_schedule_string(value_type: str, value) -> Optional[str]:
 
 def _unbuild_time_value(time_value: TimeValue, value_type: str) -> dict:
     t = time_value.time
+    # Stored to the minute: a write with seconds or hundredths (or 255,
+    # unspecified) is refused rather than acknowledged and then cut.
+    if t[2] or t[3]:  # pyright: ignore[reportIndexIssue]  # a Time is a 4-tuple; bacpypes3 types it loosely
+        raise ValueError(f"schedule time {t} is finer than a minute")
     return {
         "time": f"{t[0]:02d}:{t[1]:02d}",
         "value": atomic_value_to_schedule_string(value_type, time_value.value),

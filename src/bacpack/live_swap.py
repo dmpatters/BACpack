@@ -131,7 +131,14 @@ def carry_runtime(old, new, changed: frozenset) -> None:
 
     old_algorithm = bacpypes3_compat.event_algorithm(old)
     new_algorithm = bacpypes3_compat.event_algorithm(new)
-    if old_algorithm is not None and new_algorithm is not None:
+    # Detection turned off: the new object keeps its initial event state, as
+    # ASHRAE 135 asks (and the BACnet write of Event_Detection_Enable does).
+    # Carried, the to-normal bit stayed unacknowledged with no stamp to ack.
+    if (
+        old_algorithm is not None
+        and new_algorithm is not None
+        and new.eventDetectionEnable  # pyright: ignore[reportAttributeAccessIssue]  # every object with an event algorithm has it
+    ):
         # Event_State first: BACpack's own monitor on it clears an
         # Acked_Transitions bit, which the carried value then overwrites.
         new.eventState = old.eventState

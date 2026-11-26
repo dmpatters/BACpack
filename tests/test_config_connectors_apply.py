@@ -85,7 +85,7 @@ def test_reimporting_the_export_keeps_rows_and_credentials(session, monkeypatch)
     assert result["needs_credentials"] == {}
 
 
-def test_dry_run_writes_no_connectors_or_settings(session):
+def test_dry_run_writes_no_connectors_or_settings(session, session_factory):
     _seed(session)
     document = _export(session)
     document["settings"]["trend_retention_days"] = 7
@@ -101,12 +101,18 @@ def test_dry_run_writes_no_connectors_or_settings(session):
 
     assert result["connectors_created"] == ["New"]
     assert result["settings_changed"] is True
-    assert not session.new and not session.dirty and not session.deleted
-    session.rollback()
+    # Read before any rollback: a write the dry run made is flushed into this
+    # transaction and shows here.
+    session.expire_all()
     assert [c.name for c in session.query(Connector).order_by(Connector.name)] == ["Room", "Weather"]
     assert session.query(ConnectorMapping).count() == 2
     assert session.get(ServerSettings, 1).trend_retention_days == 90
     assert _by_name(session, "Weather").poll_interval_seconds == 300
+    session.rollback()
+    with session_factory() as fresh:
+        assert [c.name for c in fresh.query(Connector).order_by(Connector.name)] == ["Room", "Weather"]
+        assert fresh.query(ConnectorMapping).count() == 2
+        assert fresh.get(ServerSettings, 1).trend_retention_days == 90
 
 
 def test_import_creates_connectors_with_empty_credentials(session):
@@ -388,6 +394,32 @@ def test_plan_digest_ignores_credentials_and_settings(session):
     document["settings"]["trend_retention_days"] = 5
 
     assert plan_digest(_import(session, document, dry_run=True)) == before
+    weather = _by_name(session, "Weather")
+    weather.auth_password = "another-password"
+    session.commit()
+
+    assert plan_digest(_import(session, document, dry_run=True)) == before
+
+
+def test_plan_digest_changes_when_a_connectors_mappings_change(session):
+    _seed(session)
+    document = _export(session)
+    before = plan_digest(_import(session, document, dry_run=True))
+    next(c for c in document["connectors"] if c["name"] == "Weather")["mappings"] = []
+
+    assert plan_digest(_import(session, document, dry_run=True)) != before
+
+
+def test_plan_digest_reads_connectors_updated_and_the_mapping_changes_on_their_own(session):
+    _seed(session)
+    plan = _import(session, _export(session), dry_run=True)
+    base = plan_digest(plan)
+
+    fewer_updated = {**plan, "connectors_updated": plan["connectors_updated"][:1]}
+    assert plan_digest(fewer_updated) != base
+
+    changes = {name: {**c, "deleted": [*c["deleted"], "AV-9"]} for name, c in plan["connector_mappings"].items()}
+    assert plan_digest({**plan, "connector_mappings": changes}) != base
 
 
 def test_sync_config_without_connectors_keeps_the_old_result_shape(session):
@@ -398,3 +430,34 @@ def test_sync_config_without_connectors_keeps_the_old_result_shape(session):
     assert result["connectors_created"] == [] and result["connectors_updated"] == []
     assert result["connector_mappings"] == {} and result["needs_credentials"] == {}
     assert result["settings_changed"] is False
+
+
+def _with_url(document: dict, url: str) -> dict:
+    next(c for c in document["connectors"] if c["name"] == "Weather")["url"] = url
+    return document
+
+
+def test_import_of_a_url_on_another_host_predicts_and_clears_the_credentials(session):
+    _seed(session)
+    document = _with_url(_export(session), "https://other.invalid/forecast")
+
+    dry = _import(session, document, dry_run=True)
+    assert dry["needs_credentials"] == {"Weather": ["password", "header X-Api-Key"]}
+    assert _by_name(session, "Weather").auth_password == "hunter2"
+
+    result = _import(session, document)
+    assert result["needs_credentials"] == {"Weather": ["password", "header X-Api-Key"]}
+    weather = _by_name(session, "Weather")
+    assert (weather.url, weather.auth_password, weather.auth_token) == ("https://other.invalid/forecast", None, None)
+    assert weather.headers == {"X-Api-Key": ""}
+
+
+def test_import_of_a_url_on_the_same_origin_keeps_the_credentials(session):
+    _seed(session)
+    document = _with_url(_export(session), "https://example.invalid/elsewhere?x=1")
+
+    assert _import(session, document, dry_run=True)["needs_credentials"] == {}
+    _import(session, document)
+
+    weather = _by_name(session, "Weather")
+    assert (weather.auth_password, weather.auth_token, weather.headers) == ("hunter2", "tok", {"X-Api-Key": "secret"})

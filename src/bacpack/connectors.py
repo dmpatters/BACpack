@@ -15,7 +15,7 @@ import httpx
 from bacpypes3.primitivedata import Boolean
 
 from . import held_tasks, timeutil
-from .connector_config import missing_credentials, missing_credentials_message, unreadable_credentials
+from .connector_config import credentials_follow, missing_credentials, missing_credentials_message, unreadable_credentials
 from .models import BacnetObject, Connector, ConnectorMapping, Device
 from .point_config import finite_float
 
@@ -86,15 +86,7 @@ def _keeps_credentials(url: httpx.URL, location: httpx.URL) -> bool:
     """True if a redirect from `url` to `location` keeps credentials: the same
     origin, or a plain http -> https upgrade on the same host. The same rule
     httpx applies to Authorization, used here for a connector's custom headers."""
-
-    def port(u: httpx.URL) -> Optional[int]:
-        return u.port if u.port is not None else {"http": 80, "https": 443}.get(u.scheme)
-
-    if url.host != location.host:
-        return False
-    if url.scheme == location.scheme:
-        return port(url) == port(location)
-    return (url.scheme, port(url), location.scheme, port(location)) == ("http", 80, "https", 443)
+    return credentials_follow(str(url), str(location))
 
 
 def extract_json_path(data: Any, path: str) -> Any:
@@ -409,6 +401,11 @@ class ConnectorPoller:
         dropped for the rest of the chain. One client for the whole chain, so
         a redirect never changes whether the certificate is checked."""
         custom_names = list(headers)
+        # httpx rebuilds Cookie from the client's jar on every redirect, and
+        # _NoCookies keeps that empty, so the connector's own Cookie is put
+        # back while the chain keeps credentials.
+        cookie = next((value for name, value in headers.items() if name.lower() == "cookie"), None)
+        keeping = True
         request = client.build_request("GET", url, headers=headers, timeout=timeout)
         response = await client.send(request, auth=auth, stream=True)
         for _ in range(client.max_redirects):
@@ -417,8 +414,11 @@ class ConnectorPoller:
                 return response
             await response.aclose()
             if not _keeps_credentials(request.url, next_request.url):
+                keeping = False
                 for name in custom_names:
                     next_request.headers.pop(name, None)
+            if keeping and cookie is not None:
+                next_request.headers["Cookie"] = cookie
             request = next_request
             # auth=None: basic auth was applied to the first request only,
             # as with follow_redirects=True; its header travels (or not) with

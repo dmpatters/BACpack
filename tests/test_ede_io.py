@@ -27,11 +27,22 @@ def test_semicolon_and_comma_files_read_the_same_rows():
     assert comma.rows[1].description == "Room, north"
 
 
-def test_utf8_bom_is_stripped_from_the_first_title():
-    file = _read(bom=True)
+# header_lines=0 puts the BOM on the title line itself, as Excel's "CSV UTF-8" does.
+@pytest.mark.parametrize("header_lines,hashes", [(5, True), (0, False), (0, True)])
+def test_utf8_bom_is_stripped_from_the_first_title(header_lines, hashes):
+    file = _read(bom=True, header_lines=header_lines, hashes=hashes)
     assert [r.name for r in file.rows] == ["Plant controller", "AI 1"]
     assert file.columns_not_used and not any("﻿" in c for c in file.columns_not_used)
-    assert looks_like_ede(ede_bytes(ede_text([ede_row()]), bom=True))
+    assert looks_like_ede(ede_bytes(ede_text([ede_row()], header_lines=header_lines, hashes=hashes), bom=True))
+
+
+def test_a_quoted_cell_with_a_line_break_is_one_row_and_later_rows_keep_their_line_numbers():
+    rows = [device_row(), ede_row(name="Two lines", description="first\nsecond"), ede_row(instance=-1, name="Bad")]
+    file = _read(rows)
+    assert [r.name for r in file.rows] == ["Plant controller", "Two lines"]
+    assert file.rows[1].description == "first\nsecond"
+    # Five header lines, the title, the device row, then two lines of the second row.
+    assert any("row 10 (Bad)" in note for note in file.file_notes)
 
 
 def test_windows_1252_file_is_read_with_a_note():

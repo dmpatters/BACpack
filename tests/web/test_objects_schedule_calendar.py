@@ -186,7 +186,7 @@ def test_update_object_rejects_invalid_calendar_config(web_client):
     # to reject, to actually exercise the second (bacnet.py) layer.
     r = web_client.put(
         f"/api/devices/599001/objects/{obj['id']}",
-        json={"date_list": [{"kind": "date", "year": "*", "month": 13, "day": 1}]},
+        json={"date_list": [{"kind": "date", "year": "*", "month": 15, "day": 1}]},
     )
     assert r.status_code == 400
     assert "month" in r.json()["detail"]

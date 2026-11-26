@@ -9,7 +9,7 @@ from bacpack.models import LogEntry, get_or_create_settings
 from tests.test_tls_certs import _foreign_cert
 from tests.web._helpers import enable_login, set_login_mode
 
-ORIGIN = {"Origin": "http://testserver"}
+ORIGIN = {"Origin": "http://127.0.0.1"}
 
 
 @pytest.fixture

@@ -47,17 +47,21 @@ def test_update_sets_and_clears_simulation(web_client):
 
 
 @pytest.mark.parametrize(
-    "object_type,simulation",
+    "object_type,simulation,reason",
     [
-        ("analog-value", {"kind": "cycle", "dwell_s": 5}),
-        ("binary-value", {"kind": "follow", "source": "analog-value:1"}),
-        ("analog-value", {"kind": "sine", "center": 1, "amplitude": 1, "period_s": 0}),
-        ("analog-value", {"kind": "triangle", "low": 5, "high": 5, "period_s": 10}),
-        ("analog-value", {"kind": "sine", "center": 1, "amplitude": 1, "period_s": 10, "bogus": 1}),
-        ("calendar", {"kind": "sine", "center": 1, "amplitude": 1, "period_s": 10}),
+        ("analog-value", {"kind": "cycle", "dwell_s": 5}, "must be one of sine"),
+        ("binary-value", {"kind": "follow", "source": "analog-value:1"}, "must be one of square, random"),
+        ("analog-value", {"kind": "sine", "center": 1, "amplitude": 1, "period_s": 0}, "period_s: Input should be greater"),
+        ("analog-value", {"kind": "triangle", "low": 5, "high": 5, "period_s": 10}, "low must be below high"),
+        (
+            "analog-value",
+            {"kind": "sine", "center": 1, "amplitude": 1, "period_s": 10, "bogus": 1},
+            "bogus: Extra inputs",
+        ),
+        ("calendar", {"kind": "sine", "center": 1, "amplitude": 1, "period_s": 10}, "can't be simulated"),
     ],
 )
-def test_bad_settings_are_400(web_client, object_type, simulation):
+def test_bad_settings_are_400(web_client, object_type, simulation, reason):
     _create_device(web_client)
     body = {"object_type": object_type, "instance_number": 5, "name": "X", "simulation": simulation}
     if object_type == "calendar":  # its own check runs first and needs an entry
@@ -65,6 +69,7 @@ def test_bad_settings_are_400(web_client, object_type, simulation):
     r = web_client.post("/api/devices/599001/objects", json=body)
     assert r.status_code == 400, r.text
     assert "simulation" in r.json()["detail"]
+    assert reason in r.json()["detail"]
 
 
 def test_nan_setting_is_refused(web_client):

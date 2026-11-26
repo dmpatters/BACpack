@@ -6,6 +6,7 @@ construction dispatcher's own tests."""
 from __future__ import annotations
 
 import asyncio
+import datetime
 import logging
 import threading
 import time
@@ -2319,6 +2320,155 @@ async def test_password_checks_run_one_at_a_time_and_requests_keep_their_order(s
     assert app._dcc_state == "enable"
 
 
+def _blocked_first_check(app, monkeypatch):
+    """The first password check parks in its worker thread until `release` is
+    set; every hash read and scrypt run is counted."""
+    from bacpack import application as application_module
+
+    release = threading.Event()
+    counts = {"reads": 0, "verifies": 0}
+    real_read = app._stored_bacnet_password_hash
+    real_verify = application_module.verify_password
+
+    def read():
+        counts["reads"] += 1
+        if counts["reads"] == 1:
+            release.wait(10)
+        return real_read()
+
+    def verify(password, stored):
+        counts["verifies"] += 1
+        return real_verify(password, stored)
+
+    app._stored_bacnet_password_hash = read
+    monkeypatch.setattr(application_module, "verify_password", verify)
+    return release, counts
+
+
+def _password_request(kind, password):
+    from bacpypes3.apdu import DeviceCommunicationControlRequest, ReinitializeDeviceRequest
+
+    if kind == "dcc":
+        return DeviceCommunicationControlRequest(enableDisable="enable", password=CharacterString(password))
+    return ReinitializeDeviceRequest(reinitializedStateOfDevice="warmstart", password=CharacterString(password))
+
+
+@pytest.mark.asyncio
+async def test_the_password_queue_holds_ten_and_refuses_the_next_at_once(session_factory, monkeypatch):
+    from bacpypes3.errors import OutOfResources
+
+    _, app = _protected_app(session_factory)
+    release, counts = _blocked_first_check(app, monkeypatch)
+    kinds = ["dcc", "reinit"] * 5 + ["dcc"]
+    passwords = ["wrong-pw"] * 11
+    passwords[7] = "right-pw"  # one genuine request among the queued ones
+    tasks = [asyncio.create_task(_send(app, _password_request(k, p))) for k, p in zip(kinds, passwords)]
+    await asyncio.sleep(0.2)  # one in its check, ten waiting
+    assert counts["reads"] == 1
+
+    with pytest.raises(OutOfResources) as excinfo:
+        await asyncio.wait_for(_send(app, _password_request("reinit", "wrong-pw")), 1)
+    with pytest.raises(OutOfResources):
+        await asyncio.wait_for(_send(app, _password_request("dcc", "wrong-pw")), 1)
+    assert excinfo.value.abortReason == "outOfResources"
+    assert counts == {"reads": 1, "verifies": 0}
+
+    release.set()
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    assert counts["reads"] == 11
+    for index, result in enumerate(results):
+        if index == 7:
+            assert result is None  # accepted (its ack went to the shared capture)
+        else:
+            assert isinstance(result, ExecutionError)
+            assert _password_failure(type("E", (), {"value": result})) == ("security", "passwordFailure")
+
+    reads_before = counts["reads"]
+    with pytest.raises(ExecutionError):  # drained: checked normally again
+        await _send(app, _password_request("dcc", "wrong-pw"))
+    assert counts["reads"] == reads_before + 1
+
+
+@pytest.mark.asyncio
+async def test_a_full_password_queue_answers_an_abort_pdu(session_factory):
+    from bacpypes3.apdu import AbortPDU
+
+    _, app = _protected_app(session_factory)
+    app._password_waiting = application.MAX_PASSWORD_WAITERS
+    request = _password_request("dcc", "wrong-pw")
+    captured = []
+
+    async def capture(resp):
+        captured.append(resp)
+
+    app.response = capture
+    await app.indication(request)
+    assert len(captured) == 1 and isinstance(captured[0], AbortPDU)
+    assert str(captured[0].apduAbortRejectReason) == "out-of-resources"
+
+
+@pytest.mark.asyncio
+async def test_password_queue_refusals_are_logged_once_a_minute(session_factory, caplog, monkeypatch):
+    from bacpypes3.errors import OutOfResources
+
+    window = 0.2  # stands in for the minute
+    monkeypatch.setattr(application, "PASSWORD_REFUSAL_LOG_SECONDS", window)
+    _, app = _protected_app(session_factory)
+    app._password_waiting = application.MAX_PASSWORD_WAITERS
+
+    async def refuse(kind):
+        with pytest.raises(OutOfResources):
+            await _send(app, _password_request(kind, "wrong-pw"))
+
+    def warnings():
+        return [r.getMessage() for r in caplog.records if "too many waiting" in r.getMessage()]
+
+    with caplog.at_level(logging.WARNING, logger="bacpack.security"):
+        await refuse("dcc")
+        assert len(warnings()) == 1 and "refused 1 request:" in warnings()[0]
+        await refuse("reinit")
+        await refuse("dcc")
+        assert len(warnings()) == 1  # held until the window ends
+        await asyncio.sleep(window * 1.5)
+        assert len(warnings()) == 2 and "refused 2 requests:" in warnings()[1]
+        await refuse("reinit")  # inside the window the flush opened
+        await asyncio.sleep(window * 1.5)
+        assert len(warnings()) == 3 and "refused 1 request:" in warnings()[2]
+        await asyncio.sleep(window * 1.5)  # a quiet window closes it
+        assert len(warnings()) == 3
+        await refuse("dcc")  # logged at once again
+        assert len(warnings()) == 4
+    assert not any("bacnet-password-failed" in str(e) for e in app.traffic_log._entries)
+    assert not any("device-communication-control" in str(e) or "reinitialize-device" in str(e) for e in app.traffic_log._entries)
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_waiter_frees_its_place_in_the_password_queue(session_factory):
+    from bacpypes3.errors import OutOfResources
+
+    _, app = _protected_app(session_factory)
+    lock = app._password_order_lock()
+    await lock.acquire()
+
+    async def turn():
+        async with app._password_turn():
+            pass
+
+    waiters = [asyncio.ensure_future(turn()) for _ in range(application.MAX_PASSWORD_WAITERS)]
+    await asyncio.sleep(0)
+    with pytest.raises(OutOfResources):
+        await turn()
+    waiters[0].cancel()
+    await asyncio.sleep(0)
+    assert app._password_waiting == application.MAX_PASSWORD_WAITERS - 1
+    late = asyncio.ensure_future(turn())  # gets the freed place
+    await asyncio.sleep(0)
+    assert app._password_waiting == application.MAX_PASSWORD_WAITERS
+    lock.release()
+    await asyncio.gather(*waiters[1:], late)
+    assert app._password_waiting == 0 and not lock.locked()
+
+
 @pytest.mark.asyncio
 async def test_a_refused_password_leaves_the_reinitialize_lock_free(session_factory):
     from bacpypes3.apdu import ReinitializeDeviceRequest
@@ -2474,6 +2624,48 @@ async def test_a_value_change_sends_no_cov_notification_under_dcc(base_requests)
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("confirmed", [True, False])
+async def test_a_sent_event_notification_is_in_the_traffic_log_unless_dcc_suppresses_it(base_requests, confirmed):
+    from bacpypes3.apdu import (
+        ConfirmedEventNotificationRequest,
+        DeviceCommunicationControlRequest,
+        UnconfirmedEventNotificationRequest,
+    )
+    from bacpypes3.basetypes import TimeStamp
+    from bacpypes3.pdu import Address
+
+    app = _alarming_app()
+    cls = ConfirmedEventNotificationRequest if confirmed else UnconfirmedEventNotificationRequest
+
+    def notification():
+        apdu = cls(
+            processIdentifier=1,
+            initiatingDeviceIdentifier=("device", 599001),
+            eventObjectIdentifier=("analog-input", 1),
+            timeStamp=TimeStamp(sequenceNumber=1),
+            notificationClass=1,
+            priority=100,
+            eventType="outOfRange",
+            notifyType="alarm",
+            ackRequired=False,
+            fromState="normal",
+            toState="highLimit",
+        )
+        apdu.pduDestination = Address("192.168.1.99")
+        return apdu
+
+    def event_entries():
+        return [e["detail"] for e in app.traffic_log.recent() if e["event_type"] == "event-notification"]
+
+    await app.request(notification())
+    assert event_entries() == ["-> 192.168.1.99 obj analog-input:1 to high-limit"]
+
+    await _send(app, DeviceCommunicationControlRequest(enableDisable="disableInitiation"))
+    await app.request(notification())
+    assert len(event_entries()) == 1
+
+
+@pytest.mark.asyncio
 async def test_initiation_suppressed_follows_the_dcc_state():
     from bacpypes3.apdu import DeviceCommunicationControlRequest
 
@@ -2516,7 +2708,19 @@ def _stamp_a_day_earlier(stamp):
     from bacpypes3.primitivedata import Date, Time
 
     year, month, day, _dow = tuple(stamp.dateTime.date)
-    return TimeStamp(dateTime=DateTime(date=Date((year, month, max(day - 1, 1), 255)), time=Time(tuple(stamp.dateTime.time))))
+    earlier = datetime.date(year, month, day) - datetime.timedelta(days=1)
+    return TimeStamp(
+        dateTime=DateTime(date=Date((earlier.year, earlier.month, earlier.day, 255)), time=Time(tuple(stamp.dateTime.time)))
+    )
+
+
+@pytest.mark.parametrize("year,month,day", [(2026, 3, 1), (2026, 1, 1), (2026, 11, 25)])
+def test_the_day_earlier_stamp_is_a_different_date_even_on_the_1st(year, month, day):
+    from bacpypes3.basetypes import DateTime
+    from bacpypes3.primitivedata import Date, Time
+
+    stored = TimeStamp(dateTime=DateTime(date=Date((year, month, day, 255)), time=Time((1, 2, 3, 4))))
+    assert tuple(_stamp_a_day_earlier(stored).dateTime.date)[:3] != tuple(stored.dateTime.date)[:3]
 
 
 @pytest.mark.asyncio

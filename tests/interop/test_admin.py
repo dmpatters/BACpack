@@ -3,6 +3,9 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from bacpack.db import lock_both_files
+from bacpack.models import Device
+
 from . import parse, raw
 from .helpers import poll, rp, rpm
 from .stack import IOP1, IOP2, IOP2_PASSWORD
@@ -68,17 +71,26 @@ def test_who_has_by_name_and_by_object_id(stack):
 
 
 def test_time_synchronization_sets_the_device_clock(stack):
-    # bacts with no arguments sends the host's own local time.
+    # bacts with no arguments sends the host's own local time. The device
+    # clock starts at host time, so first move it hours away: otherwise a
+    # device that ignores the request passes. bacts is unconfirmed (exit 0
+    # whatever happens), so only the clock shows it was applied.
     t = stack.tools
-    t.run("bacts").expect_ok()
 
-    def close():
+    def offset():
         got = rpm(t, IOP1, ("device", IOP1, "local-date,local-time"))[("device", IOP1)]
         device_now = parse.parse_device_datetime(got["local-date"], got["local-time"])
         # Whole datetimes, so a run around local midnight compares correctly.
-        return abs(device_now - datetime.now()) < timedelta(seconds=10)
+        return device_now - datetime.now()
 
-    poll(close, timeout=20, what="the device clock within 10 s of the host's local time")
+    with stack.session_factory() as session:
+        lock_both_files(session)
+        session.get(Device, IOP1).runtime.pending_clock_offset = 6 * 3600
+        session.commit()
+    poll(lambda: abs(offset()) > timedelta(hours=5), timeout=20, what="the device clock moved 6 hours away")
+
+    t.run("bacts").expect_ok()
+    poll(lambda: abs(offset()) < timedelta(seconds=10), timeout=20, what="the device clock back within 10 s of the host's local time")
 
 
 def _answers(tools, device):

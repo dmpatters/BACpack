@@ -14,7 +14,10 @@ from typing import Any, Awaitable, Callable
 from bacpack.db import history_db_path
 
 LOCK_SECONDS = 1.0
-MAX_GAP_SECONDS = 0.3
+# A save on the loop stalls it for nearly all of LOCK_SECONDS (about 0.95 s).
+# A shared CI runner's VM can stall it 0.4 s on its own, so the bound sits
+# between the two rather than near zero.
+MAX_GAP_SECONDS = 0.6
 TICK_SECONDS = 0.02
 
 

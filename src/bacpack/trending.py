@@ -492,9 +492,11 @@ def prune_old_samples(session_factory) -> int:
     total = 0
     while pending:
         with session_factory() as session:
-            # Take the history write lock before reading: a transaction that
-            # reads and then writes fails at once, without waiting, if another
-            # connection wrote in between.
+            # Take the history write lock before reading. The driver opens the
+            # transaction only at the first write, so today the first read is
+            # outside it; were it inside, a transaction that reads and then
+            # writes would fail at once, without waiting, after another
+            # connection's write.
             session.execute(
                 update(HistoryCounters).values(trend_total_sample_count=HistoryCounters.trend_total_sample_count)
             )

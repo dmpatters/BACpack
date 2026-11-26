@@ -25,6 +25,10 @@ def locked_out(ip: str, seconds: float) -> None:
     logger.warning("login locked out: %s for %d minutes after repeated failed logins", ip, round(seconds / 60))
 
 
+def current_password_wrong(ip: str, action: str) -> None:
+    logger.warning("current password wrong from %s (%s)", ip, action)
+
+
 def logout(ip: str) -> None:
     logger.info("logout from %s", ip)
 
@@ -73,5 +77,16 @@ def secret_key_unusable(key_file) -> None:
     logger.error("a credential was not saved: the encryption key file %s is unusable", quote(key_file))
 
 
+def host_refused(ip: str, host: str) -> None:
+    logger.warning("web request refused from %s: it asked for %s, which is not one of this server's names while no login is set", ip, quote(host[:100]))
+
+
 def bacnet_password_failed(source: str, service: str) -> None:
     logger.warning("%s refused: wrong or missing password from %s", service, source)
+
+
+def bacnet_password_queue_full(refused: int) -> None:
+    logger.warning(
+        "DeviceCommunicationControl/ReinitializeDevice refused %d request%s: too many waiting for the password check",
+        refused, "" if refused == 1 else "s",
+    )

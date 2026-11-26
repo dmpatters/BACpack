@@ -5,6 +5,7 @@ fixture will rely on, before either consumes them.
 from __future__ import annotations
 
 import asyncio
+import time
 
 import pytest
 
@@ -42,5 +43,8 @@ async def test_fake_device_process_really_runs_serve_device(session_factory, mon
         session.get(Device, 1).runtime.process_status = "stopping"
         session.commit()
 
-    await asyncio.sleep(0.1)
+    # The shutdown includes a worker-thread hop: wait for it, not a fixed time.
+    deadline = time.monotonic() + 10
+    while process.is_alive() and time.monotonic() < deadline:
+        await asyncio.sleep(0.02)
     assert not process.is_alive()

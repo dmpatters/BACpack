@@ -8,18 +8,11 @@ import pytest
 from bacpack.bacnet_client import BacnetClient
 from bacpack.clone_reader import read_controller
 from bacpack.models import BacnetObject, Device
-from bacpack.object_builder import build_application
+from tests.udp_bind import build_on_loopback
 
 
 def _build(session_factory, device_id, bind_address):
-    with session_factory() as session:
-        device = session.get(Device, device_id)
-        try:
-            return build_application(
-                device, list(device.objects), bind_address=bind_address, trend_session_factory=session_factory
-            )
-        except OSError as exc:
-            pytest.skip(f"can't bind {bind_address}: {exc}")
+    return build_on_loopback(session_factory, device_id, bind_address, trend_session_factory=session_factory)
 
 
 def _remote(session):
@@ -74,9 +67,10 @@ async def test_reads_a_running_bacpack_device_over_udp(session_factory):
         session.add(Device(id=1, name="Local"))
         _remote(session)
         session.commit()
-    remote_app = _build(session_factory, 2, "127.0.0.2/8")
-    local_app = _build(session_factory, 1, "127.0.0.1/8")
+    remote_app = local_app = None
     try:
+        remote_app = _build(session_factory, 2, "127.0.0.2/8")
+        local_app = _build(session_factory, 1, "127.0.0.1/8")
         client = BacnetClient(local_app)
         binding = await client.bind(2, "127.0.0.2", timeout=3)
         reports = []
@@ -84,8 +78,9 @@ async def test_reads_a_running_bacpack_device_over_udp(session_factory):
             client, binding, 2, 3.0, lambda done, total, phase: reports.append((done, total)), lambda: False
         )
     finally:
-        local_app.close()
-        remote_app.close()
+        for app in (local_app, remote_app):
+            if app is not None:
+                app.close()
 
     assert result["device"]["name"] == "Remote"
     assert result["device"]["vendor_name"] == "Acme" and result["device"]["location"] == "Basement"

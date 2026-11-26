@@ -34,6 +34,7 @@ async def _close_built_apps():
         if _port_is_free():
             return
         await asyncio.sleep(0.01)
+    pytest.fail("a closed app's socket on 127.0.0.1:47808 was not freed within a second")
 
 
 def _port_is_free() -> bool:
@@ -70,6 +71,7 @@ async def _wait_bound(app) -> None:
         if all(link.server.local_transport is not None for link in app.link_layers.values()):
             return
         await asyncio.sleep(0.01)
+    pytest.fail("the app's link layer did not bind within two seconds")
 
 
 def _saved(session_factory, column):

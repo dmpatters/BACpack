@@ -111,6 +111,7 @@ class Planner:
             else:
                 self._add_point(entry)
         self._strip_dependents()
+        self._before_logs()
         for entry in logs:
             self._apply_log(entry)
         self._settle()
@@ -538,6 +539,9 @@ class Planner:
             row["schedule_write_targets"] = targets or None
 
     # --- trends ---------------------------------------------------------------------
+
+    def _before_logs(self) -> None:
+        """Runs once, after every point is planned and before the first log."""
 
     def _apply_log(self, entry: dict) -> None:
         """Mark the point a real Trend Log records as trended, keeping the

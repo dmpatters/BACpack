@@ -51,7 +51,7 @@ async def test_multistate_object_requires_state_text():
     device, _ = _device_and_objects()
     bad_object = BacnetObject(object_type="multi-state-input", instance_number=2, name="MSI-2")
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="requires state_text"):
         build_application(device, [bad_object])
 
 
@@ -60,7 +60,7 @@ async def test_unknown_object_type_rejected():
     device, _ = _device_and_objects()
     bad_object = BacnetObject(object_type="not-a-real-type", instance_number=1, name="X-1")
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="unknown object_type"):
         build_application(device, [bad_object])
 
 

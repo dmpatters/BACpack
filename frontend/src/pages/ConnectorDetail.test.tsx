@@ -557,6 +557,58 @@ describe("ConnectorDetail", () => {
     confirm.mockRestore();
   });
 
+  describe("a URL on another host", () => {
+    const WARNING = /clears the saved password, token and header values/;
+
+    async function edit(url: string, overrides: Parameters<typeof renderPage>[1]) {
+      const user = userEvent.setup();
+      renderPage(undefined, overrides);
+      const settings = await screen.findByRole("form", { name: "Settings" });
+      const field = within(settings).getByLabelText("URL");
+      await user.clear(field);
+      await user.type(field, url);
+      return settings;
+    }
+
+    it("warns before saving when credentials are saved", async () => {
+      await edit("http://other.example.com/api", { authType: "basic" });
+      expect(screen.getByText(WARNING)).toBeInTheDocument();
+    });
+
+    it("warns for a saved header value alone, and for a port change", async () => {
+      await edit("http://example.com:8080/api", { headerNames: ["X-Api-Key"] });
+      expect(screen.getByText(WARNING)).toBeInTheDocument();
+    });
+
+    it("changes the blank-keeps help to blank-leaves-unset while it shows", async () => {
+      const settings = await edit("http://other.example.com/api", { authType: "basic", headerNames: ["Accept"] });
+      expect(within(settings).getByLabelText("Password")).toHaveAccessibleDescription("Blank leaves the password unset.");
+      expect(within(settings).getByLabelText("Header 1 value")).toHaveAccessibleDescription(
+        "Blank leaves the value unset."
+      );
+    });
+
+    it("keeps the blank-keeps help for a URL that keeps them", async () => {
+      const settings = await edit("https://example.com/api", { authType: "basic", headerNames: ["Accept"] });
+      expect(within(settings).getByLabelText("Password")).toHaveAccessibleDescription("Blank keeps the saved password.");
+      expect(within(settings).getByLabelText("Header 1 value")).toHaveAccessibleDescription("Blank keeps the saved value.");
+    });
+
+    it("says nothing for the same host or an http to https upgrade", async () => {
+      await edit("https://example.com/other", { authType: "bearer" });
+      expect(screen.queryByText(WARNING)).not.toBeInTheDocument();
+    });
+
+    it("says nothing when no credentials are saved", async () => {
+      await edit("http://other.example.com/api", {
+        authType: "basic",
+        headerNames: ["X-Api-Key"],
+        missing: ["password", "header X-Api-Key"],
+      });
+      expect(screen.queryByText(WARNING)).not.toBeInTheDocument();
+    });
+  });
+
   it("shows the auth fields only for the saved or chosen auth type, and sends only those", async () => {
     vi.mocked(connectorsApi.update).mockResolvedValue({} as never);
     const user = userEvent.setup();

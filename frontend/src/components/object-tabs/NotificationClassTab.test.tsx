@@ -60,6 +60,19 @@ describe("RecipientListEditor", () => {
       { ...recipients[0], recipient: { kind: "device", instance_number: 0 } },
     ]);
   });
+
+  it("edits a row's process ID", () => {
+    const onChange = vi.fn();
+    const recipients: NotificationRecipientEntry[] = [emptyRecipient()];
+    render(<RecipientListEditor recipients={recipients} onChange={onChange} />);
+
+    const pid = screen.getByRole("spinbutton", { name: "Recipient 1 process ID" });
+    expect(pid).toHaveValue(1);
+    fireEvent.change(pid, { target: { value: "600" } });
+
+    expect(onChange).toHaveBeenCalledWith([{ ...recipients[0], process_identifier: 600 }]);
+    expect(screen.getByText(/use the process ID your front end expects/i)).toBeInTheDocument();
+  });
 });
 
 // --- NotificationClassTab as a tab panel: driven by props, not a route ---
@@ -322,6 +335,7 @@ describe("NotificationClassTab", () => {
     expect(screen.getByRole("combobox", { name: "Recipient 1 kind" })).toHaveValue("address");
     expect(screen.getByRole("textbox", { name: "Recipient 1 address" })).toBeInTheDocument();
     expect(screen.getByRole("spinbutton", { name: "Recipient 2 device instance" })).toHaveValue(17);
+    expect(screen.getByRole("spinbutton", { name: "Recipient 2 process ID" })).toHaveValue(1);
     expect(screen.getAllByRole("checkbox", { name: "Confirmed" })).toHaveLength(2);
   });
 });

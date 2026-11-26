@@ -77,7 +77,7 @@ def test_app_startup_creates_the_database_on_a_fresh_path(tmp_path):
     from bacpack.web.app import create_app
 
     db_path = tmp_path / "fresh.db"
-    with TestClient(create_app(db_path=str(db_path))) as client:
+    with TestClient(create_app(db_path=str(db_path)), base_url="http://127.0.0.1") as client:
         # A fresh install waits for the setup screen.
         assert client.get("/api/devices").status_code == 403
         with client.app.state.session_factory() as session:
@@ -166,7 +166,7 @@ def test_foreign_origin_without_fetch_metadata_is_refused(web_client):
 
 def test_matching_origin_is_allowed(web_client):
     r = web_client.post(
-        "/api/devices", json={"id": 1, "name": "A"}, headers={"Origin": "http://testserver"}
+        "/api/devices", json={"id": 1, "name": "A"}, headers={"Origin": "http://127.0.0.1"}
     )
     assert r.status_code == 201
 
@@ -182,7 +182,7 @@ def test_origin_matching_only_a_forwarded_host_is_refused(web_client):
 
 def test_origin_with_a_different_port_is_refused(web_client):
     r = web_client.post(
-        "/api/devices", json={"id": 1, "name": "A"}, headers={"Origin": "http://testserver:3000"}
+        "/api/devices", json={"id": 1, "name": "A"}, headers={"Origin": "http://127.0.0.1:3000"}
     )
     assert r.status_code == 403
 
@@ -280,7 +280,7 @@ def test_shutdown_stops_devices_after_cancelling_the_resume_task(tmp_path, monke
 
     monkeypatch.setattr(EngineManager, "resume_remembered_devices", slow_resume)
     monkeypatch.setattr(EngineManager, "stop_all_for_shutdown", stop_all)
-    with TestClient(_app_without_init(tmp_path, monkeypatch, _template_db)):
+    with TestClient(_app_without_init(tmp_path, monkeypatch, _template_db), base_url="http://127.0.0.1"):
         pass
     assert events == ["resume cancelled", "stop all"]
 
@@ -296,7 +296,7 @@ def test_startup_runs_the_resume_task_after_reattach(tmp_path, monkeypatch, _tem
 
     monkeypatch.setattr(EngineManager, "reattach_running_devices", reattach)
     monkeypatch.setattr(EngineManager, "resume_remembered_devices", resume)
-    with TestClient(_app_without_init(tmp_path, monkeypatch, _template_db)):
+    with TestClient(_app_without_init(tmp_path, monkeypatch, _template_db), base_url="http://127.0.0.1"):
         pass
     assert events[:2] == ["reattach", "resume"]
 
@@ -328,7 +328,7 @@ def test_lifespan_shutdown_saves_queued_log_lines(tmp_path, monkeypatch):
 
     db_path = tmp_path / "shutdown.db"
     app = create_app(db_path=str(db_path))
-    with TestClient(app):
+    with TestClient(app, base_url="http://127.0.0.1"):
         logging.getLogger("bacpack.web.app").warning("logged just before shutdown")
 
     engine = make_engine(db_path)
@@ -372,7 +372,7 @@ def test_a_failing_shutdown_step_still_saves_log_lines_and_disposes_the_engine(t
     db_path = tmp_path / "shutdown.db"
     app = create_app(db_path=str(db_path))
     with pytest.raises(RuntimeError, match="stop failed"):
-        with TestClient(app):
+        with TestClient(app, base_url="http://127.0.0.1"):
             logging.getLogger("bacpack.web.app").warning("logged before a failing shutdown")
 
     assert [e.url.database for e in disposed] == [str(db_path)], "the app's engine was never disposed"
@@ -411,7 +411,7 @@ def test_a_failing_connector_poller_stop_still_stops_the_devices_and_disposes_th
 
     db_path = tmp_path / "shutdown.db"
     with pytest.raises(RuntimeError, match="poller stop failed"):
-        with TestClient(create_app(db_path=str(db_path))):
+        with TestClient(create_app(db_path=str(db_path)), base_url="http://127.0.0.1"):
             pass
 
     assert len(device_stops) == 1, "the devices were not stopped (nor remembered for the next start)"

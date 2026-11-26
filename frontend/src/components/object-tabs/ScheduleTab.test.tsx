@@ -301,6 +301,20 @@ describe("ScheduleTab", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Saved.");
   });
 
+  it("saves a change back to the old value before the object refetches", async () => {
+    vi.mocked(objectsApi.update).mockReset().mockResolvedValue({} as never);
+    const user = userEvent.setup();
+    renderTab(makeObj({ schedule_value_type: "analog", schedule_default: "70", schedule_priority: 14 } as Partial<BacnetObjectDTO>));
+    // user.clear doesn't empty a number input in jsdom.
+    fireEvent.change(await screen.findByLabelText("Priority for writing (1-16)"), { target: { value: "9" } });
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Saved.");
+    fireEvent.change(screen.getByLabelText("Priority for writing (1-16)"), { target: { value: "14" } });
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(objectsApi.update).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(objectsApi.update).mock.calls[1][2]).toEqual({ schedule_priority: 14 });
+  });
+
   it("keeps an unsaved schedule edit when another tab's save refreshes the object", async () => {
     const user = userEvent.setup();
     const client = new QueryClient();

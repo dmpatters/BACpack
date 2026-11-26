@@ -18,7 +18,12 @@ from typing import Any, NamedTuple, Optional
 import bacpypes3.local.event as _event_module
 import bacpypes3.local.object as _local_object_module
 import bacpypes3.local.schedule as _schedule_module
-from bacpypes3.apdu import ConfirmedEventNotificationRequest, UnconfirmedEventNotificationRequest
+from bacpypes3.apdu import (
+    AbortPDU,
+    ConfirmedEventNotificationRequest,
+    RejectPDU,
+    UnconfirmedEventNotificationRequest,
+)
 from bacpypes3.basetypes import DateRange, EventState, TimeStamp
 from bacpypes3.constructeddata import AnyAtomic
 from bacpypes3.local.cmd import Commandable, PriorityArray
@@ -161,6 +166,8 @@ DEPENDS_ON = {
     "bacpypes3.primitivedata.Time.now": "calls time.time() as a module global (the device clock swap)",
     "bacpypes3.service.cov.ChangeOfValueServices.__init__": "creates _cov_detections, keyed by object identifier (take/restore_cov_subscriptions)",
     "bacpypes3.service.cov.ChangeOfValueServices.add_subscription": "indexes _cov_detections by cov.obj_ref.objectIdentifier (restore_cov_subscriptions)",
+    "bacpypes3.service.cov.ChangeOfValueServices.do_SubscribeCOVRequest": "matches a renewal on client_addr, proc_id and obj_id among a detection's cov_subscriptions, and keeps the subscription's confirmed (set_cov_subscription_confirmed)",
+    "bacpypes3.service.cov.Subscription.renew_subscription": "changes only the lifetime, so confirmed set beforehand stays (set_cov_subscription_confirmed)",
     "bacpypes3.service.cov.Subscription.__init__": "cancel_handle, covIncrement and a call_later on obj._app (take/restore_cov_subscriptions)",
     "bacpypes3.service.device.WhoIsFuture.match": "a Who-Is for one instance resolves on its first I-Am; the notification send waits on that",
     "bacpypes3.service.object.read_property_to_result_element": "the RPM handler's per-property read; a None object gives an unknown-object element",
@@ -389,13 +396,14 @@ async def _device_recipient_address(app, instance: int, notifying) -> Optional[A
 
 
 async def _send_notifications_by_weekday(self, notification_parameters) -> None:
-    """EventAlgorithm.send_notifications with two changes: upstream tests
+    """EventAlgorithm.send_notifications with three changes: upstream tests
     `validDays[3]` (Thursday) every day (the weekday comes from the same
     Date.now() as the From_Time/To_Time check, so both follow the device
-    clock), and a device-instance recipient it hasn't heard from is asked
-    for with a Who-Is instead of being skipped. The body is otherwise
-    upstream's, minus its debug logging; don't mutate recipientList here:
-    the loop awaits between recipients."""
+    clock), a device-instance recipient it hasn't heard from is asked
+    for with a Who-Is instead of being skipped, and a notification that
+    was refused or got no reply is logged instead of dropped. The body is
+    otherwise upstream's, minus its debug logging; don't mutate
+    recipientList here: the loop awaits between recipients."""
     event_initiating_object = self.monitoring_object or self.monitored_object
     notification_class_object = event_initiating_object._notification_class_object
 
@@ -406,7 +414,7 @@ async def _send_notifications_by_weekday(self, notification_parameters) -> None:
     day_of_week = current_date[3]
     weekday = day_of_week - 1 if 1 <= day_of_week <= 7 else None
 
-    recipient_futures = set()
+    recipient_futures: dict[asyncio.Future, tuple[str, Any, str]] = {}
 
     for destination in notification_class_object.recipientList:
         if weekday is not None and not destination.validDays[weekday]:
@@ -460,20 +468,90 @@ async def _send_notifications_by_weekday(self, notification_parameters) -> None:
         notification_request.pduDestination = pdu_destination
         notification_request.processIdentifier = destination.processIdentifier
 
-        recipient_futures.add(event_initiating_object._app.request(notification_request))
+        recipient_text = address_text(pdu_destination)
+        if recipient.device:
+            recipient_text = f"device {recipient.device[1]} at {recipient_text}"
+        future = event_initiating_object._app.request(notification_request)
+        recipient_futures[future] = (
+            recipient_text,
+            destination.processIdentifier,
+            _TRANSITION_NAMES[new_state_index],
+        )
 
     if not recipient_futures:
         return
 
-    done, pending = await asyncio.wait(recipient_futures)
+    await asyncio.wait(recipient_futures)
 
-    for request_future in done:
-        try:
-            request_exception = request_future.exception()
-            if not request_exception:
-                continue
-        except asyncio.CancelledError:
-            pass
+    for request_future, (recipient_text, process_identifier, transition) in recipient_futures.items():
+        if request_future.cancelled():
+            continue
+        request_exception = request_future.exception()
+        if request_exception is None:
+            continue
+        _log_undelivered(
+            event_initiating_object,
+            recipient_text,
+            process_identifier,
+            transition,
+            _undelivered_text(request_exception),
+        )
+
+
+_TRANSITION_NAMES = ("to-offnormal", "to-fault", "to-normal")
+# A recipient that keeps refusing (or is down) gets one log line a minute;
+# the next line counts the ones left out.
+_REFUSAL_LOG_SECONDS = 60.0
+
+
+def address_text(address: Optional[Address]) -> str:
+    """A LocalStation built from a recipient's BACnet/IP MAC prints as
+    0xc0a8014dbac0; read as an Address, the same six bytes print as
+    192.168.1.77 (with :port when it isn't 47808)."""
+    mac = address.addrAddr if isinstance(address, LocalStation) else None
+    if mac is not None and len(mac) == 6:
+        return str(Address(bytes(mac)))
+    return str(address)
+
+
+def _undelivered_text(exc: BaseException) -> str:
+    """What happened to a notification that wasn't acknowledged. A reply
+    arrives as an exception: an Error, a Reject or an Abort, and a timeout
+    as an Abort with reason no-response."""
+    if isinstance(exc, AbortPDU):
+        reason = str(exc.apduAbortRejectReason)
+        return "no reply" if reason == "no-response" else f"refused, abort: {reason}"
+    if isinstance(exc, RejectPDU):
+        return f"refused, reject: {exc.apduAbortRejectReason}"
+    error_class = getattr(exc, "errorClass", None)
+    if error_class is not None:
+        return f"refused, error: {error_class}: {getattr(exc, 'errorCode', None)}"
+    try:
+        text = str(exc)
+    except Exception:
+        text = ""
+    return f"not sent: {text or type(exc).__name__}"
+
+
+def _log_undelivered(notifying, recipient_text, process_identifier, transition, outcome) -> None:
+    app = notifying._app
+    refusals = vars(app).setdefault("_notification_refusals", {})
+    now = time.monotonic()
+    next_at, left_out = refusals.get(recipient_text, (0.0, 0))
+    if now < next_at:
+        refusals[recipient_text] = (next_at, left_out + 1)
+        return
+    refusals[recipient_text] = (now + _REFUSAL_LOG_SECONDS, 0)
+    more = f" ({left_out} more since the last)" if left_out else ""
+    logger.warning(
+        "event notification from %s to %s, process ID %s, %s: %s%s",
+        log_names.live_object_ref(notifying),
+        recipient_text,
+        process_identifier,
+        transition,
+        outcome,
+        more,
+    )
 
 
 def _install_import_time_swaps() -> None:
@@ -788,6 +866,19 @@ def take_cov_subscriptions(app, obj) -> list:
         detection.cancel_subscription(cov)
     detection.unbind()
     return taken
+
+
+def set_cov_subscription_confirmed(app, client_addr, proc_id, obj_id, confirmed) -> None:
+    """Set the notification mode of the subscription a SubscribeCOV from
+    this client, process id and object would renew: upstream's renewal
+    changes only the lifetime. Does nothing when there is none."""
+    detection = app._cov_detections.get(obj_id)
+    if detection is None:
+        return
+    for cov in detection.cov_subscriptions:
+        if cov.client_addr == client_addr and cov.proc_id == proc_id and cov.obj_id == obj_id:
+            cov.confirmed = confirmed
+            return
 
 
 def restore_cov_subscriptions(app, obj, taken: list) -> None:

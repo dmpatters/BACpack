@@ -3,10 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import SampleBuildingPanel from "./SampleBuildingPanel";
+import SampleBuildingPanel, { sampleNotice } from "./SampleBuildingPanel";
 import { sampleApi } from "../api/endpoints";
 import { ApiError } from "../api/http";
-import type { SamplePlan } from "../api/types";
+import type { SampleLoadedDevice, SamplePlan } from "../api/types";
 
 vi.mock("../api/endpoints", () => ({
   sampleApi: { plan: vi.fn(), load: vi.fn() },
@@ -27,16 +27,61 @@ const plan: SamplePlan = {
 function renderPanel(onClose = vi.fn()) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const invalidate = vi.spyOn(client, "invalidateQueries");
+  const onLoaded = vi.fn();
   const ui = (open: boolean) => (
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <SampleBuildingPanel open={open} onClose={onClose} />
+        <SampleBuildingPanel open={open} onClose={onClose} onLoaded={onLoaded} />
       </MemoryRouter>
     </QueryClientProvider>
   );
   const { rerender } = render(ui(true));
-  return Object.assign(onClose, { invalidate, setOpen: (open: boolean) => rerender(ui(open)) });
+  return Object.assign(onClose, { invalidate, onLoaded, setOpen: (open: boolean) => rerender(ui(open)) });
 }
+
+function loaded(name: string, started: boolean | null, error: string | null = null): SampleLoadedDevice {
+  return { id: 1, name, bind_address: null, port: null, started, error };
+}
+
+describe("sampleNotice", () => {
+  it("says the devices were not started when the load did not start them", () => {
+    expect(sampleNotice({ devices: [loaded("A", null), loaded("B", null)] })).toEqual({
+      type: "ok",
+      message: "Loaded the sample building: 2 devices, not started.",
+    });
+  });
+
+  it("says every device started", () => {
+    expect(sampleNotice({ devices: [loaded("A", true), loaded("B", true), loaded("C", true)] })).toEqual({
+      type: "ok",
+      message: "Loaded the sample building: 3 devices started.",
+    });
+  });
+
+  it("names each device that failed to start with its error", () => {
+    const notice = sampleNotice({
+      devices: [loaded("A", true), loaded("B", false, "port in use"), loaded("C", false, "no address")],
+    });
+    expect(notice).toEqual({
+      type: "error",
+      message: "Loaded the sample building; started 1 of 3 devices. B: port in use; C: no address",
+    });
+  });
+
+  it("shows just the name when a failed device has no error text", () => {
+    expect(sampleNotice({ devices: [loaded("A", true), loaded("B", false)] })).toEqual({
+      type: "error",
+      message: "Loaded the sample building; started 1 of 2 devices. B",
+    });
+  });
+
+  it("reads 1 device in the singular", () => {
+    expect(sampleNotice({ devices: [loaded("A", true)] })).toEqual({
+      type: "ok",
+      message: "Loaded the sample building: 1 device started.",
+    });
+  });
+});
 
 describe("SampleBuildingPanel", () => {
   beforeEach(() => {
@@ -81,6 +126,20 @@ describe("SampleBuildingPanel", () => {
     expect(onClose.invalidate).toHaveBeenCalledWith({ queryKey: ["engineStatus"] });
   });
 
+  it("hands the load result to onLoaded before closing", async () => {
+    const user = userEvent.setup();
+    const result = {
+      devices: [{ id: 4190001, name: "Sample AHU-1", bind_address: null, port: null, started: true, error: null }],
+    };
+    vi.mocked(sampleApi.plan).mockResolvedValue(plan);
+    vi.mocked(sampleApi.load).mockResolvedValue(result);
+    const onClose = renderPanel();
+    await user.click(await screen.findByRole("button", { name: "Load" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(onClose.onLoaded).toHaveBeenCalledWith(result);
+    expect(onClose.onLoaded.mock.invocationCallOrder[0]).toBeLessThan(onClose.mock.invocationCallOrder[0]);
+  });
+
   it("loads without starting when the box is unticked", async () => {
     const user = userEvent.setup();
     vi.mocked(sampleApi.plan).mockResolvedValue(plan);
@@ -100,6 +159,7 @@ describe("SampleBuildingPanel", () => {
     expect(await screen.findByText(/Couldn't load the sample building/)).toBeInTheDocument();
     expect(screen.getByText(/already exists/)).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
+    expect(onClose.onLoaded).not.toHaveBeenCalled();
   });
 
   it("disables the button while loading, saying it is starting the devices when they are ticked", async () => {

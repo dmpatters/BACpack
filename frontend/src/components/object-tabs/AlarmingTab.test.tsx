@@ -541,7 +541,8 @@ describe("AlarmFieldsEditor alarm controls", () => {
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ alarm_limit_enable: [false, true] }));
   });
 
-  it("unticks an explicit limit when its value is cleared", async () => {
+  it("keeps an explicit limit enable while its limit is cleared and retyped", async () => {
+    // A number input reports "" mid-edit, so the enable is settled at save.
     const user = userEvent.setup();
     const onChange = vi.fn();
     render(
@@ -553,10 +554,14 @@ describe("AlarmFieldsEditor alarm controls", () => {
     );
 
     await user.clear(screen.getByLabelText("Low limit"));
-
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ alarm_low_limit: null, alarm_limit_enable: [false, true] })
+      expect.objectContaining({ alarm_low_limit: null, alarm_limit_enable: [true, true] })
     );
+    await user.type(screen.getByLabelText("Low limit"), "-5");
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ alarm_low_limit: -5, alarm_limit_enable: [true, true] })
+    );
+    expect(screen.getByLabelText("Low limit enabled")).toBeChecked();
   });
 
   it("sends null when time delay to normal is cleared", async () => {
@@ -660,6 +665,38 @@ describe("AlarmingTab alarm controls", () => {
     const patch = vi.mocked(objectsApi.update).mock.lastCall![2];
     expect(patch).toMatchObject({ alarm_low_limit: null, alarm_limit_enable: [false, true] });
     expect(patch).not.toHaveProperty("alarm_event_enable");
+  });
+
+  it("keeps an explicit limit enable when a limit is retyped, and saves only the new limit", async () => {
+    const user = userEvent.setup();
+    vi.mocked(objectsApi.update).mockReset().mockResolvedValue(makeObj());
+    renderTab(makeObj({ alarm_high_limit: 100, alarm_low_limit: 10, alarm_limit_enable: [true, true] }));
+
+    await user.clear(screen.getByLabelText("High limit"));
+    await user.type(screen.getByLabelText("High limit"), "90");
+    await user.clear(screen.getByLabelText("Low limit"));
+    await user.type(screen.getByLabelText("Low limit"), "-5");
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => expect(objectsApi.update).toHaveBeenCalledTimes(1));
+    const patch = vi.mocked(objectsApi.update).mock.lastCall![2];
+    expect(patch).toMatchObject({ alarm_high_limit: 90, alarm_low_limit: -5 });
+    expect(patch).not.toHaveProperty("alarm_limit_enable");
+    expect(screen.getByLabelText("High limit enabled")).toBeChecked();
+    expect(screen.getByLabelText("Low limit enabled")).toBeChecked();
+  });
+
+  it("shows a cleared limit's side unticked after the save, with nothing left unsaved", async () => {
+    const user = userEvent.setup();
+    vi.mocked(objectsApi.update).mockReset().mockResolvedValue(makeObj());
+    renderTab(makeObj({ alarm_high_limit: 100, alarm_low_limit: 10, alarm_limit_enable: [true, true] }));
+
+    await user.clear(screen.getByLabelText("Low limit"));
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    await screen.findByText(/^Saved\.$/);
+    expect(screen.getByLabelText("Low limit enabled")).not.toBeChecked();
+    expect(screen.getByLabelText("High limit enabled")).toBeChecked();
   });
 
   it("sends no event enable after a tick off and back on", async () => {

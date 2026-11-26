@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Iterable, Sequence
 
+import httpx
+
 from .models import COMMANDABLE_TYPES
 from .secrets_store import Unreadable
 
@@ -129,6 +131,33 @@ def check_write_target_free(target: Point, others: Iterable[tuple[str, Point]]) 
 def check_write_source(object_type: str) -> None:
     if object_type == "notification-class":
         raise ConnectorRuleError(400, "notification-class objects have no Present_Value to send")
+
+
+def credentials_follow(old_url: str, new_url: str) -> bool:
+    """True if saved credentials may go to `new_url` after `old_url`: the same
+    origin, or a plain http -> https upgrade on the same host (the rule httpx
+    applies to Authorization on a redirect). A URL with no scheme or host
+    follows nothing, except an unchanged one: a form re-sends the saved URL
+    on every save, even one httpx can't parse."""
+    if old_url == new_url:
+        return True
+
+    def origin(url: str) -> tuple[str, str, int | None] | None:
+        try:
+            parsed = httpx.URL(url)
+        except httpx.InvalidURL:
+            return None
+        scheme, host = parsed.scheme.lower(), parsed.host.lower()
+        if not scheme or not host:
+            return None
+        return scheme, host, parsed.port if parsed.port is not None else {"http": 80, "https": 443}.get(scheme)
+
+    old, new = origin(old_url), origin(new_url)
+    if old is None or new is None or old[1] != new[1]:
+        return False
+    if old[0] == new[0]:
+        return old[2] == new[2]
+    return (old[0], old[2], new[0], new[2]) == ("http", 80, "https", 443)
 
 
 def missing_credentials(

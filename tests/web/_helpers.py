@@ -95,12 +95,12 @@ def session_cookie(client):
         token = login_store.create_session(session, "testclient", "pytest")
         session.commit()
     client.cookies.set(SESSION_COOKIE, token)
-    client.headers["Origin"] = "http://testserver"
+    client.headers["Origin"] = "http://127.0.0.1"
     return token
 
 
 def sign_in(client, username="admin", password=LOGIN_PASSWORD):
-    client.headers["Origin"] = "http://testserver"
+    client.headers["Origin"] = "http://127.0.0.1"
     r = client.post("/api/auth/login", json={"username": username, "password": password})
     assert r.status_code == 200, r.text
 

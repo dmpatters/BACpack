@@ -30,6 +30,7 @@ from bacpack.objects.trend_log import _log_record_from_sample, device_local_time
 from bacpack import readrange_cursors
 from bacpack.readrange_cursors import ReadRangeCursors
 from bacpack.timeutil import python_datetime
+from tests.local_time import host_zone  # noqa: F401  (a fixture)
 from bacpack.models import BacnetObject, Device, TrendSample
 from bacpack.models import get_or_create_history_counters, trend_state_of, TrendState
 from bacpack.trending import _MAX_SEQUENCE, record_sample
@@ -386,7 +387,7 @@ async def test_read_range_by_time_excludes_a_record_stamped_at_the_reference(ses
 
 
 @pytest.mark.asyncio
-async def test_log_record_timestamps_are_device_local_not_utc(session_factory):
+async def test_log_record_timestamps_are_device_local_not_utc(session_factory, host_zone):
     """Regression for the naive-UTC wire bug: records went out in UTC."""
     object_id = _make_object_row(session_factory)
     base = dt.datetime(2026, 1, 1, 12, 0, 0)
@@ -397,9 +398,12 @@ async def test_log_record_timestamps_are_device_local_not_utc(session_factory):
 
     assert python_datetime(records[0].timestamp) == _local(base)
     assert python_datetime(records[1].timestamp) == _local(base, 3600.0)
+    if host_zone is not None:  # UTC offsets of 1 January, written out so _local is not the only oracle
+        hours = {"UTC": 0, "Asia/Tokyo": 9, "America/Los_Angeles": -8, "Australia/Sydney": 11}[host_zone]
+        assert python_datetime(records[0].timestamp) == base + dt.timedelta(hours=hours)
 
 
-def test_device_local_timestamp_helper():
+def test_device_local_timestamp_helper(host_zone):
     sample = TrendSample(timestamp=dt.datetime(2026, 1, 1, 12, 0, 0), clock_offset=-90.0)
     assert device_local_timestamp(sample) == _local(dt.datetime(2026, 1, 1, 12, 0, 0), -90.0)
 
@@ -511,8 +515,9 @@ async def test_read_range_unknown_object_rejected(session_factory):
     req = ReadRangeRequest(
         objectIdentifier=("trend-log", 99), propertyIdentifier="logBuffer"
     )
-    with pytest.raises(ExecutionError):
+    with pytest.raises(ExecutionError) as excinfo:
         await app.do_ReadRangeRequest(req)
+    assert (excinfo.value.errorClass, excinfo.value.errorCode) == ("object", "unknownObject")
 
 
 @pytest.mark.asyncio
@@ -525,8 +530,9 @@ async def test_read_range_on_non_trend_log_object_rejected(session_factory):
     req = ReadRangeRequest(
         objectIdentifier=("analog-value", 1), propertyIdentifier="presentValue"
     )
-    with pytest.raises(ExecutionError):
+    with pytest.raises(ExecutionError) as excinfo:
         await app.do_ReadRangeRequest(req)
+    assert (excinfo.value.errorClass, excinfo.value.errorCode) == ("services", "propertyIsNotAList")
 
 
 @pytest.mark.asyncio

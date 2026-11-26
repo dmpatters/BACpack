@@ -288,9 +288,9 @@ def build_set(out_dir: Path, *, provisional: bool = True, release: str = "1.0.0"
     db_path = out_dir / "bacpack.db"
 
     app = create_app(db_path=str(db_path), process_factory=_process_factory)
-    with TestClient(app, base_url="http://testserver", headers={"Origin": "http://testserver"}) as client:
+    with TestClient(app, base_url="http://127.0.0.1", headers={"Origin": "http://127.0.0.1"}) as client:
         _post(client, "/api/auth/setup", {"mode": "login", "username": USERNAME, "password": PASSWORD})
-        api_key = _post(client, "/api/settings/api-keys", {"name": "fixture-key"})["key"]
+        api_key = _post(client, "/api/settings/api-keys", {"name": "fixture-key", "current_password": PASSWORD})["key"]
         ids = _configure(client)
         export = _send(client, "GET", "/api/config/export").content
         csv_bytes = _send(client, "GET", f"/api/devices/{AHU}/objects/export.csv").content

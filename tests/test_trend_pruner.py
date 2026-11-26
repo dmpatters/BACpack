@@ -150,7 +150,9 @@ async def test_the_retention_tick_kicks_the_pruner(session_factory):
     task = asyncio.ensure_future(
         trending.run_retention_task(session_factory, pruner=FakePruner(), interval_seconds=0.01)
     )
-    await asyncio.sleep(0.3)
+    deadline = asyncio.get_running_loop().time() + 10.0  # the kick follows four threaded passes
+    while not kicks and asyncio.get_running_loop().time() < deadline:
+        await asyncio.sleep(0.02)
     task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await task

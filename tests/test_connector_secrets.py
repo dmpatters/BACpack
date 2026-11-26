@@ -92,7 +92,7 @@ def test_import_over_an_unreadable_connector_still_needs_credentials(session_fac
     _lose_the_key(tmp_path)
     with session_factory() as session:
         existing = session.scalar(select(Connector))
-        missing = config_connectors._missing_credentials({"type": "http-poll", "auth_type": "basic", "headers": {}}, existing)
+        missing = config_connectors._missing_credentials({"type": "http-poll", "url": "http://x", "auth_type": "basic", "headers": {}}, existing)
     assert missing == ["password"]
 
 

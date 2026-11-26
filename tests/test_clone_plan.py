@@ -10,6 +10,8 @@ from bacpack.clone_plan import build_plan
 from bacpack.config_schemas import ObjectCreate
 from bacpack.models import MAX_TREND_SAMPLE_CAP
 
+from tests.row_walks import WalkCountingRows
+
 
 def _obj(object_type, instance, name=None, *, missing=(), error=None, failed=None, **props):
     props = {key.replace("_", "-"): value for key, value in props.items()}
@@ -678,23 +680,16 @@ def test_a_whole_controller_plans_and_passes_the_device_check():
 def test_planning_walks_the_rows_a_fixed_number_of_times_not_once_per_object():
     from bacpack import clone_plan
 
-    class CountingRows(dict):
-        walks = 0
-
-        def values(self):
-            CountingRows.walks += 1
-            return super().values()
-
     count = 300
     raw = _raw(
         *[_obj("analog-input", n, f"AI-{n}") for n in range(1, count + 1)],
         *[_log(1000 + n, f"Log {n}", f"analog-input:{n}") for n in range(1, count + 1)],
     )
     planner = clone_plan.Planner(raw, 599050, "Boiler Room")
-    planner.rows = CountingRows()
+    planner.rows = WalkCountingRows()
     plan = planner.plan()
     assert len(plan.objects) == count and all(row["trended"] for row in plan.objects)
-    assert CountingRows.walks < 10
+    assert planner.rows.walks < 10
 
 
 def test_planner_is_public_and_hooks_can_be_overridden():

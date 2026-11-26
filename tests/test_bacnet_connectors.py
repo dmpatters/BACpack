@@ -68,6 +68,7 @@ class FakeClient:
             raise self.fail
         if self.write_fail is not None:
             raise self.write_fail
+        cast_for_write(point, value)  # the ClientError the real write raises for an unconvertible value
         self.writes.append((point, to_jsonable(value), priority))
 
 
@@ -532,6 +533,21 @@ async def test_write_mapping_sends_the_local_value_at_its_priority(session_facto
     entry = _status(session_factory, ids["connector"])["write_status"][str(ids["writes"][0])]
     assert entry["error"] is None
     assert entry["last_sent_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_a_value_the_remote_type_cannot_take_is_refused_and_reported(session_factory):
+    # 5.0 is no binary Present_Value: the cast raises the ClientError the real write raises.
+    ids = _setup(session_factory, reads=(), writes=(Point("binary-value", 7),))
+    app = _app(session_factory)
+    await _set_local(app, 5.0)
+    client = FakeClient()
+
+    await _run(BacnetConnectorRunner(session_factory, app, 1, client=client))
+
+    assert client.writes == []
+    entry = _status(session_factory, ids["connector"])["write_status"][str(ids["writes"][0])]
+    assert "can't write" in entry["error"]
 
 
 @pytest.mark.asyncio
@@ -1718,6 +1734,50 @@ async def test_proxy_with_an_unreachable_remote_faults_and_refuses_writes(sessio
     runner._due.clear()
     await _run(runner)
     assert obj.reliability == Reliability("no-fault-detected")
+
+
+@pytest.mark.asyncio
+async def test_an_alarming_proxy_returns_to_normal_when_the_remote_recovers_with_a_new_value(session_factory):
+    # The new value queues the alarm evaluation; a Reliability change made
+    # after it in the same step went unrecorded, so the object stayed FAULT.
+    _setup_proxy(session_factory)
+    with session_factory() as session:
+        sp = session.query(BacnetObject).filter_by(name="SP").one()
+        sp.alarming_enabled = True
+        sp.notification_class_instance = 1
+        sp.alarm_high_limit = 100.0
+        sp.alarm_low_limit = 0.0
+        sp.alarm_deadband = 1.0
+        session.add(BacnetObject(device_id=1, object_type="notification-class", instance_number=1, name="NC-1"))
+        session.commit()
+    app = _app(session_factory)
+    client = FakeClient()
+    client.values = {REMOTE_AV: Real(40.0), REMOTE_AV_ARRAY: _remote_array(p8=40.0)}
+    runner = BacnetConnectorRunner(session_factory, app, 1, client=client)
+    await _run(runner)
+    obj = _live(app)
+
+    async def settle():
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+    await settle()
+    assert obj.eventState.attr == "normal"
+
+    client.fail = ClientError("no response within 1 s", kind="transport")
+    runner._due.clear()
+    await _run(runner)
+    await settle()
+    assert obj.eventState.attr == "fault"
+
+    client.fail = None
+    client.values = {REMOTE_AV: Real(41.0), REMOTE_AV_ARRAY: _remote_array(p8=41.0)}
+    runner._due.clear()
+    await _run(runner)
+    await settle()
+    assert obj.presentValue == 41.0
+    assert obj.reliability == Reliability("no-fault-detected")
+    assert obj.eventState.attr == "normal"
 
 
 @pytest.mark.asyncio

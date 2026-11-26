@@ -1,14 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiKeysApi, loginSettingsApi } from "../api/endpoints";
-import type { LoginSettings, NewApiKey } from "../api/types";
+import type { LoginMode, LoginSettings, NewApiKey } from "../api/types";
 import { ActionStatus, Loading } from "../components/AsyncState";
 import { LoadError } from "../components/Banner";
 import Button from "../components/Button";
 import Callout from "../components/Callout";
 import { useConfirm } from "../components/ConfirmDialog";
 import { TableFrame } from "../components/DataTable";
-import { Field, Fieldset, Form, FormActions, SettingsColumn, useFieldProblem } from "../components/Form";
+import { CheckField, Field, Fieldset, Form, FormActions, SettingsColumn, useFieldProblem } from "../components/Form";
 import PageHeader from "../components/PageHeader";
 import { useUnsavedChanges } from "../components/UnsavedChanges";
 import { MIN_PASSWORD_LENGTH } from "../utils/password";
@@ -34,7 +34,7 @@ export default function Security() {
           <LoginSection login={login} />
         )}
       </SettingsColumn>
-      <ApiKeysSection />
+      <ApiKeysSection loginMode={login?.mode} />
     </>
   );
 }
@@ -99,22 +99,27 @@ function UsernameForm({ current }: { current: string }) {
 }
 
 function PasswordForm() {
+  const queryClient = useQueryClient();
   const refresh = useRefreshLogin();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [again, setAgain] = useState("");
-  const dirty = current !== "" || next !== "" || again !== "";
+  const [revokeKeys, setRevokeKeys] = useState(false);
+  const dirty = current !== "" || next !== "" || again !== "" || revokeKeys;
   useUnsavedChanges(dirty, PAGE);
   const submit = useFieldProblem([
     ["next", next.length < MIN_PASSWORD_LENGTH && `The new password needs at least ${MIN_PASSWORD_LENGTH} characters.`],
     ["again", next !== again && "The two new passwords differ."],
   ]);
   const save = useMutation({
-    mutationFn: () => loginSettingsApi.update({ new_password: next, current_password: current }),
-    onSuccess: () => {
+    mutationFn: (revoke: boolean) =>
+      loginSettingsApi.update({ new_password: next, current_password: current, revoke_api_keys: revoke }),
+    onSuccess: (_data, revoke) => {
+      if (revoke) queryClient.invalidateQueries({ queryKey: ["apiKeys"] });
       setCurrent("");
       setNext("");
       setAgain("");
+      setRevokeKeys(false);
       refresh();
     },
   });
@@ -122,7 +127,7 @@ function PasswordForm() {
     <Form
       onSubmit={(e) => {
         e.preventDefault();
-        if (submit.canSubmit()) save.mutate();
+        if (submit.canSubmit()) save.mutate(revokeKeys);
       }}
     >
       <Fieldset legend="Password">
@@ -139,6 +144,12 @@ function PasswordForm() {
         <Field label="New password again" error={submit.errorFor("again")}>
           <input type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} />
         </Field>
+        <CheckField
+          label="Also revoke every API key"
+          help="API keys stay valid after a password change unless you tick this."
+          checked={revokeKeys}
+          onChange={(e) => setRevokeKeys(e.target.checked)}
+        />
         <FormActions>
           <Button variant="primary" type="submit" disabled={!current || save.isPending}>
             Change password
@@ -185,11 +196,17 @@ function DisableForm() {
 }
 
 function EnableForm() {
+  const queryClient = useQueryClient();
   const refresh = useRefreshLogin();
+  const { data: keys } = useQuery({ queryKey: ["apiKeys"], queryFn: apiKeysApi.list });
+  const keyCount = keys?.length ?? 0;
+  // Ticked unless the user unticks it: keys made while the login was off
+  // start working the moment it is on.
+  const [keepKeys, setKeepKeys] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [again, setAgain] = useState("");
-  const dirty = username !== "" || password !== "" || again !== "";
+  const dirty = username !== "" || password !== "" || again !== "" || keepKeys;
   useUnsavedChanges(dirty, PAGE);
   const submit = useFieldProblem([
     ["username", !username.trim() && "Choose a username."],
@@ -197,8 +214,11 @@ function EnableForm() {
     ["again", password !== again && "The two passwords differ."],
   ]);
   const enable = useMutation({
-    mutationFn: () => loginSettingsApi.enable({ username: username.trim(), password }),
-    onSuccess: () => {
+    mutationFn: (revoke: boolean) =>
+      loginSettingsApi.enable({ username: username.trim(), password, revoke_api_keys: revoke }),
+    onSuccess: (_data, revoke) => {
+      if (revoke) queryClient.invalidateQueries({ queryKey: ["apiKeys"] });
+      setKeepKeys(false);
       setUsername("");
       setPassword("");
       setAgain("");
@@ -209,7 +229,9 @@ function EnableForm() {
     <Form
       onSubmit={(e) => {
         e.preventDefault();
-        if (submit.canSubmit()) enable.mutate();
+        // Sent even before the key list loads, or if it fails to: revoking
+        // no keys is harmless, keeping keys the user never saw is not.
+        if (submit.canSubmit()) enable.mutate(!keepKeys);
       }}
     >
       <Fieldset legend="Create a login">
@@ -222,6 +244,14 @@ function EnableForm() {
         <Field label="Password again" error={submit.errorFor("again")}>
           <input type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} />
         </Field>
+        {keyCount > 0 && (
+          <CheckField
+            label={keyCount === 1 ? "Also revoke the 1 existing API key" : `Also revoke the ${keyCount} existing API keys`}
+            help="They were made while the login was off. Untick to keep keys you set up on purpose."
+            checked={!keepKeys}
+            onChange={(e) => setKeepKeys(!e.target.checked)}
+          />
+        )}
         <FormActions>
           <Button variant="primary" type="submit" disabled={enable.isPending}>
             Create login
@@ -233,7 +263,7 @@ function EnableForm() {
   );
 }
 
-function ApiKeysSection() {
+function ApiKeysSection({ loginMode }: { loginMode: LoginMode | undefined }) {
   const queryClient = useQueryClient();
   // Polled so Last used catches up while the page stays open; the server
   // records a key's use at most once a minute.
@@ -243,15 +273,21 @@ function ApiKeysSection() {
     refetchInterval: 30_000,
   });
   const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const needsPassword = loginMode === "login";
+  useEffect(() => {
+    if (!needsPassword) setPassword("");
+  }, [needsPassword]);
   const [shown, setShown] = useState<NewApiKey | null>(null);
   const [copied, setCopied] = useState(false);
-  useUnsavedChanges(name !== "", PAGE);
+  useUnsavedChanges(name !== "" || (needsPassword && password !== ""), PAGE);
   const { ask, dialog } = useConfirm();
 
   const create = useMutation({
-    mutationFn: () => apiKeysApi.create(name.trim()),
+    mutationFn: () => apiKeysApi.create(name.trim(), needsPassword ? password : undefined),
     onSuccess: (key) => {
       setName("");
+      setPassword("");
       setCopied(false);
       setShown(key);
       queryClient.invalidateQueries({ queryKey: ["apiKeys"] });
@@ -299,8 +335,22 @@ function ApiKeysSection() {
           <Field label="Name" help="e.g. grafana">
             <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
+          {needsPassword && (
+            <Field label="Current password" help="Creating a key asks for the password.">
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </Field>
+          )}
           <FormActions>
-            <Button variant="primary" type="submit" disabled={!name.trim() || create.isPending}>
+            <Button
+              variant="primary"
+              type="submit"
+              disabled={!name.trim() || loginMode === undefined || (needsPassword && !password) || create.isPending}
+            >
               Create key
             </Button>
           </FormActions>

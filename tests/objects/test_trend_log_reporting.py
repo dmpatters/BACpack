@@ -89,9 +89,11 @@ async def _settle():
 
 
 async def _until(condition, timeout=10.0):
+    # In a thread: a condition that reads the database on the loop would add
+    # its own stalls to a loop-gap measurement it runs inside.
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
-    while not condition():
+    while not await asyncio.to_thread(condition):
         assert loop.time() < deadline, "timed out"
         await asyncio.sleep(0.01)
 

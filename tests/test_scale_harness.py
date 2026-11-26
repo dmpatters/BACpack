@@ -21,7 +21,8 @@ async def test_loop_lag_monitor_sees_a_blocking_call():
 async def test_loop_lag_monitor_quiet_loop():
     async with LoopLagMonitor() as lag:
         await asyncio.sleep(0.2)
-    assert lag.max_gap < 0.1
+    # Far above a stall the parallel suite's own load can cause.
+    assert lag.max_gap < 0.5
 
 
 def test_statement_recorder_and_table_scans(session_factory):

@@ -468,7 +468,11 @@ async def test_clone_job_reports_progress_and_finishes(session_factory, monkeypa
 
 @pytest.mark.asyncio
 async def test_progress_is_saved_at_most_every_half_second(session_factory, monkeypatch):
-    release = asyncio.Event()
+    # Reports arrive across awaits, so a save is never still in flight when the
+    # next one comes: only the time check holds the count down.
+    throttle = 0.2
+    monkeypatch.setattr(client_requests, "CLONE_PROGRESS_SECONDS", throttle)
+    reports, timing = 12, {}
     saved = []
     poller = ClientRequestPoller(session_factory, 1, client=FakeClient())
     real = poller._save_progress
@@ -480,20 +484,23 @@ async def test_progress_is_saved_at_most_every_half_second(session_factory, monk
     monkeypatch.setattr(poller, "_save_progress", counting)
 
     async def fake(client, binding, instance, timeout, report, cancelled):
-        for done in range(1, 101):
-            report(done, 100)
-        await release.wait()
+        loop = asyncio.get_running_loop()
+        timing["start"] = loop.time()
+        for done in range(1, reports + 1):
+            report(done, reports)
+            await asyncio.sleep(0.05)
+        timing["elapsed"] = loop.time() - timing["start"]
         return {}
 
     monkeypatch.setattr(client_requests.clone_reader, "read_controller", fake)
     _add_request(session_factory, "clone-read", _CLONE_PARAMS)
     tasks = await poller.claim_and_start()
-    await asyncio.sleep(0.1)
-    release.set()
     await asyncio.gather(*tasks)
 
-    assert len(saved) <= 3  # the first report, the last one at the end
-    assert saved[-1] == (100, 100)
+    # One save at the start of each throttle window, plus the final count.
+    assert len(saved) <= timing["elapsed"] / throttle + 2
+    assert len(saved) < reports
+    assert saved[-1] == (reports, reports)
 
 
 @pytest.mark.asyncio
@@ -588,11 +595,12 @@ async def test_a_progress_save_does_not_overwrite_a_finished_row(session_factory
 @pytest.mark.asyncio
 async def test_a_clone_job_is_not_held_to_a_request_budget(session_factory, monkeypatch):
     async def fake(client, binding, instance, timeout, report, cancelled):
-        await asyncio.sleep(0.05)
+        # Longer than ten times the per-request timeout, the largest budget any kind gets.
+        await asyncio.sleep(0.6)
         return {"objects": []}
 
     monkeypatch.setattr(client_requests.clone_reader, "read_controller", fake)
-    request_id = _add_request(session_factory, "clone-read", {"instance": 2, "timeout_seconds": 1})
+    request_id = _add_request(session_factory, "clone-read", {"instance": 2, "timeout_seconds": 0.05})
     tasks = await ClientRequestPoller(session_factory, 1, client=FakeClient()).claim_and_start()
     await asyncio.gather(*tasks)
     assert _row_with_progress(session_factory, request_id)["status"] == "done"

@@ -75,7 +75,7 @@ def test_validate_calendar_config_rejects_bad_kind():
 
 def test_validate_calendar_config_rejects_bad_date_component():
     with pytest.raises(ValueError, match="month"):
-        validate_calendar_config([{"kind": "date", "year": "*", "month": 13, "day": 1}])
+        validate_calendar_config([{"kind": "date", "year": "*", "month": 15, "day": 1}])
 
 
 def test_validate_calendar_config_accepts_null_week_and_day_component_as_wildcard():
@@ -131,21 +131,24 @@ async def test_calendar_created_through_api_schema_with_omitted_year_builds():
 
 @pytest.mark.asyncio
 async def test_build_application_builds_calendar_object_present_value_true_for_matching_date():
-    today = dt.date.today()
     device = Device(id=599001, name="Test Device", vendor_identifier=999)
-    cal = BacnetObject(
-        object_type="calendar",
-        instance_number=1,
-        name="Cal-1",
-        date_list=[
-            {"kind": "date", "year": today.year, "month": today.month, "day": today.day}
-        ],
-    )
-    app = build_application(device, [cal])
-    obj = app.get_object_name("Cal-1")
-    # Boolean reads back int-like (1/0), same as outOfService elsewhere in
-    # this codebase -- not a real Python bool.
-    assert await obj.read_property("presentValue") == 1
+    for _ in range(2):
+        today = dt.date.today()
+        cal = BacnetObject(
+            object_type="calendar",
+            instance_number=1,
+            name="Cal-1",
+            date_list=[
+                {"kind": "date", "year": today.year, "month": today.month, "day": today.day}
+            ],
+        )
+        app = build_application(device, [cal])
+        obj = app.get_object_name("Cal-1")
+        # Boolean reads back int-like (1/0), not a real Python bool.
+        value = await obj.read_property("presentValue")
+        if dt.date.today() == today:  # a run across midnight tries again
+            break
+    assert value == 1
 
 
 @pytest.mark.asyncio
@@ -373,19 +376,23 @@ async def test_a_date_pattern_with_a_day_of_week_round_trips(session_factory):
 
 @pytest.mark.asyncio
 async def test_a_calendar_with_a_day_of_week_matches_only_that_weekday():
-    today = dt.date.today()
-    other = today.isoweekday() % 7 + 1  # ISO and BACnet both number Monday 1
     device = Device(id=599001, name="Test Device", vendor_identifier=999)
-    rows = [
-        BacnetObject(
-            object_type="calendar", instance_number=i, name=f"Cal-{i}",
-            date_list=[{"kind": "date", "day_of_week": str(dow)}],
-        )
-        for i, dow in ((1, today.isoweekday()), (2, other))
-    ]
-    app = build_application(device, rows)
-    assert await app.get_object_name("Cal-1").read_property("presentValue") == 1
-    assert await app.get_object_name("Cal-2").read_property("presentValue") == 0
+    for _ in range(2):
+        today = dt.date.today()
+        other = today.isoweekday() % 7 + 1  # ISO and BACnet both number Monday 1
+        rows = [
+            BacnetObject(
+                object_type="calendar", instance_number=i, name=f"Cal-{i}",
+                date_list=[{"kind": "date", "day_of_week": str(dow)}],
+            )
+            for i, dow in ((1, today.isoweekday()), (2, other))
+        ]
+        app = build_application(device, rows)
+        first = await app.get_object_name("Cal-1").read_property("presentValue")
+        second = await app.get_object_name("Cal-2").read_property("presentValue")
+        if dt.date.today() == today:  # a run across midnight tries again
+            break
+    assert (first, second) == (1, 0)
 
 
 @pytest.mark.parametrize("bad", [0, 8, "Mon"])

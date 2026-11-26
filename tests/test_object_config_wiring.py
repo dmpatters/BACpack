@@ -251,6 +251,26 @@ async def test_add_list_element_checks_the_saved_row(session_factory, monkeypatc
         await app.get_object_name("NC-1").add_recipients([_destination()])
 
 
+async def test_notification_class_priority_write_checks_the_saved_row(session_factory, monkeypatch):
+    from bacpypes3.basetypes import ArrayOf
+    from bacpypes3.primitivedata import Unsigned
+
+    app = await _running(session_factory, _nc())
+    _refuse_objects(monkeypatch)
+    # Values validate_notification_class_config accepts: only the saved-row check can refuse.
+    with pytest.raises(PropertyError):
+        await app.get_object_name("NC-1").write_property("priority", ArrayOf(Unsigned)([11, 22, 33]))
+
+
+async def test_notification_class_ack_required_write_checks_the_saved_row(session_factory, monkeypatch):
+    from bacpypes3.basetypes import EventTransitionBits
+
+    app = await _running(session_factory, _nc())
+    _refuse_objects(monkeypatch)
+    with pytest.raises(PropertyError):
+        await app.get_object_name("NC-1").write_property("ackRequired", EventTransitionBits([0, 1, 1]))
+
+
 async def test_schedule_write_checks_the_saved_row(session_factory, monkeypatch):
     schedule = BacnetObject(
         object_type="schedule",

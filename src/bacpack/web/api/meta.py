@@ -5,13 +5,14 @@ from __future__ import annotations
 import functools
 
 from fastapi import APIRouter
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 
 from ... import bacpack_version
 from ...application import LoggingApplication
 from ...capabilities import capabilities_report
 from ...lifecycle import running_web, service_mode
 from ...pics import render_pics
+from ...pics_html import render_pics_html
 from ...point_config import list_engineering_units
 
 router = APIRouter()
@@ -46,11 +47,22 @@ def _pics_text() -> str:
     return render_pics()
 
 
-@router.get("/pics", response_class=PlainTextResponse)
+@functools.cache
+def _pics_page() -> str:
+    return render_pics_html(_pics_text())
+
+
+@router.get("/pics", response_class=HTMLResponse)
 def get_pics():
     """The Protocol Implementation Conformance Statement (ASHRAE 135 Annex A) of
-    the running version, as the same text the repository's PICS.md holds.
-    Plain text rather than text/markdown, which browsers download instead of show."""
+    the running version, as a web page."""
+    return HTMLResponse(_pics_page())
+
+
+@router.get("/pics.md", response_class=PlainTextResponse)
+def get_pics_markdown():
+    """The PICS as the same text the repository's PICS.md holds. Plain text
+    rather than text/markdown, which browsers download instead of show."""
     return PlainTextResponse(
         _pics_text(),
         media_type="text/plain; charset=utf-8",

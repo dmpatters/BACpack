@@ -205,7 +205,8 @@ def _drop_all_tables(engine: Engine, schema: str) -> None:
 def _ensure_startup_rows(engine: Engine, *, main_was_fresh: bool) -> None:
     """Rows the code assumes exist: one runtime row per device, object and
     connector (restoring any lost), the history counters row, created
-    here rather than raced for by two devices' first trend samples, and the
+    here rather than raced for by two devices' first trend samples (written
+    only when missing, so a restart never waits on the history file), and the
     server settings row, so retention never writes the main file (a save
     that had already read main failed at once on that lock). INSERT OR
     IGNORE leaves existing rows untouched. A settings row made in a main file
@@ -233,9 +234,16 @@ def _ensure_startup_rows(engine: Engine, *, main_was_fresh: bool) -> None:
                 .from_select([key], select(owner.__table__.c.id))
                 .prefix_with("OR IGNORE")
             )
-        connection.execute(insert(HistoryCounters.__table__).values(id=1).prefix_with("OR IGNORE"))
         settings_row = {"id": 1, "login_mode": None if main_was_fresh else "none"}
         connection.execute(insert(ServerSettings.__table__).values(**settings_row).prefix_with("OR IGNORE"))
+    # Its own transaction, and only when missing: even an INSERT OR IGNORE
+    # takes the history write lock, which a device still running from before a
+    # parent restart may hold past the busy timeout.
+    with engine.connect() as connection:
+        has_counters = connection.execute(select(HistoryCounters.id).limit(1)).first()
+    if has_counters is None:
+        with engine.begin() as connection:
+            connection.execute(insert(HistoryCounters.__table__).values(id=1).prefix_with("OR IGNORE"))
 
 
 def init_db(engine: Engine) -> None:
@@ -256,9 +264,13 @@ def init_db(engine: Engine) -> None:
         logger.warning("new database beside an old history file: clearing the old history")
         _drop_all_tables(engine, HISTORY_SCHEMA)
         fresh["history"] = True
-    # Out of the migrations' way; ensure_triggers puts them back last.
-    with engine.begin() as connection:
-        migrations.drop_triggers(connection)
+    # Out of the migrations' way; ensure_triggers puts them back last. Only
+    # when main has a migration to run: a plain restart leaves them alone.
+    with engine.connect() as connection:
+        main_version = migrations.get_schema_version(connection, "main")
+    if not fresh["main"] and main_version < len(migrations.migrations_for("main")):
+        with engine.begin() as connection:
+            migrations.drop_triggers(connection)
     for schema in migrations.SCHEMAS:
         if not fresh[schema]:
             migrations.run_pending_migrations(engine, schema)

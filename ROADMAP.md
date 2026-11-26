@@ -11,6 +11,7 @@ Planned after 1.0, in the order we expect to get to it. This is intent, not a pr
 7. Loop, Accumulator and Pulse Converter objects.
 8. CreateObject and DeleteObject, so BACnet clients can add and remove objects on a BACpack device.
 9. Full traffic log. Every BACnet message a device sends or receives, with an export.
+10. BACnet/SC (Secure Connect), so a device can join a BACnet/SC network through a hub.
 
 ## Suggesting something
 

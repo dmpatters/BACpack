@@ -41,7 +41,7 @@ def test_export_then_parse_round_trips():
     )
 
     doc = export_config([device])
-    assert doc["version"] == 1
+    assert doc["version"] == CONFIG_VERSION
     assert len(doc["devices"]) == 1
 
     parsed = parse_config(doc)
@@ -376,16 +376,40 @@ def test_parse_config_accepts_this_format_version_older_or_none(extra):
     assert parse_config(doc)[0]["id"] == 1
 
 
+def test_every_older_format_version_has_a_converter_run_before_parsing(monkeypatch):
+    # A bump that changes what a field means must ship `_upgrade_vN_to_vM(data) -> data`
+    # for the step it adds; older files are converted one step at a time, then parsed.
+    from bacpack import config_io
+
+    calls = []
+    for old in range(1, config_io.CONFIG_VERSION):
+        name = f"_upgrade_v{old}_to_v{old + 1}"
+        converter = getattr(config_io, name, None)
+        assert callable(converter), f"CONFIG_VERSION is {config_io.CONFIG_VERSION} but config_io has no {name}"
+
+        def spy(data, _real=converter, _old=old):
+            calls.append(_old)
+            return _real(data)
+
+        monkeypatch.setattr(config_io, name, spy)
+    for old in range(1, config_io.CONFIG_VERSION):
+        calls.clear()
+        document = {"version": old, "devices": [{"id": 1, "name": "A", "objects": []}]}
+        config_io.parse_config(document)
+        assert calls == list(range(old, config_io.CONFIG_VERSION)), f"a version {old} file skipped a converter"
+
+
 def test_parse_config_ignores_bacpack_version():
     # Informational only: a file from any release imports if its format
     # version is one this release reads.
-    doc = {"version": 1, "bacpack_version": "9.9.9", "devices": []}
+    doc = {"version": CONFIG_VERSION, "bacpack_version": "9.9.9", "devices": []}
     assert parse_config(doc) == []
 
 
 def test_parse_config_refuses_a_newer_format_version():
     doc = {"version": CONFIG_VERSION + 1, "bacpack_version": "9.9.9", "devices": []}
-    with pytest.raises(ConfigImportError, match=r"format version 2 \(written by BACpack 9\.9\.9\).*can read \(up to 1\)"):
+    pattern = rf"format version {CONFIG_VERSION + 1} \(written by BACpack 9\.9\.9\).*can read \(up to {CONFIG_VERSION}\)"
+    with pytest.raises(ConfigImportError, match=pattern):
         parse_config(doc)
 
 
@@ -1068,14 +1092,16 @@ def test_backup_of_one_device_restores_onto_another(session_factory):
         (b"\xff\xfe not utf-8", "UTF-8 JSON"),
         (b"{not json", "UTF-8 JSON"),
         (b"[]", "top-level 'devices' list"),
-        (json.dumps({"version": 1, "devices": []}).encode(), "exactly one device"),
+        (json.dumps({"version": CONFIG_VERSION, "devices": []}).encode(), "exactly one device"),
         (
-            json.dumps({"version": 1, "devices": [{"id": 1, "name": "A"}, {"id": 2, "name": "B"}]}).encode(),
+            json.dumps(
+                {"version": CONFIG_VERSION, "devices": [{"id": 1, "name": "A"}, {"id": 2, "name": "B"}]}
+            ).encode(),
             "exactly one device",
         ),
         (
-            json.dumps({"version": 2, "devices": [{"id": 1, "name": "A", "objects": []}]}).encode(),
-            "format version 2",
+            json.dumps({"version": CONFIG_VERSION + 1, "devices": [{"id": 1, "name": "A", "objects": []}]}).encode(),
+            f"format version {CONFIG_VERSION + 1}",
         ),
     ],
 )
@@ -1271,7 +1297,7 @@ def test_plan_digest_changes_when_the_plan_does():
 
 
 def _sim_doc(*objects):
-    return {"version": 1, "devices": [{"id": 1, "name": "D", "objects": list(objects)}]}
+    return {"version": CONFIG_VERSION, "devices": [{"id": 1, "name": "D", "objects": list(objects)}]}
 
 
 def test_parse_config_carries_and_canonicalizes_simulation():
@@ -1803,17 +1829,25 @@ def test_create_devices_checks_the_links(session_factory):
 
 
 def test_create_devices_refuses_two_trend_logs_with_one_instance(session_factory):
+    from sqlalchemy import select
+
     from bacpack.config_io import create_devices
 
+    with session_factory() as session:
+        # The second new object's row id is the Trend Log instance it defaults to.
+        second_id = max(session.scalars(select(BacnetObject.id)), default=0) + 2
     objects = [
-        {"object_type": "analog-value", "instance_number": n, "name": f"AV{n}", "trended": True, "trend_log_instance": 5}
-        for n in (1, 2)
+        {
+            "object_type": "analog-value", "instance_number": 1, "name": "AV1",
+            "trended": True, "trend_log_instance": second_id,
+        },
+        {"object_type": "analog-value", "instance_number": 2, "name": "AV2", "trended": True},
     ]
-    doc = {"devices": [{"id": 10, "name": "New A", "objects": objects}]}
+    parsed = parse_config({"devices": [{"id": 10, "name": "New A", "objects": objects}]})
     with session_factory() as session:
         lock_both_files(session)
-        with pytest.raises(ConfigImportError):
-            create_devices(session, parse_config(doc))
+        with pytest.raises(ConfigImportError, match="Trend Log"):
+            create_devices(session, parsed)
         session.rollback()
 
 

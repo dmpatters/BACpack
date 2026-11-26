@@ -32,6 +32,80 @@ def test_key_file_is_owner_only_on_posix(tmp_path):
     assert stat.S_IMODE((tmp_path / ss.KEY_FILE).stat().st_mode) == 0o600
 
 
+# FAT/exFAT, some SMB shares and container bind mounts refuse hard links
+# with a plain OSError, not FileExistsError.
+def _links_refused(monkeypatch, before_raising=None):
+    def refuse(src, dst):
+        if before_raising is not None:
+            before_raising()
+        raise OSError(1, "Operation not permitted")
+
+    monkeypatch.setattr(ss.os, "link", refuse)
+
+
+def _leftover_temps(data_dir):
+    return [p.name for p in data_dir.iterdir() if p.name.endswith(".tmp")]
+
+
+def test_a_folder_that_refuses_hard_links_still_gets_a_usable_key(tmp_path, monkeypatch):
+    _links_refused(monkeypatch)
+    assert ss.ensure_key(tmp_path) is True
+    assert ss.decrypt(tmp_path, ss.encrypt(tmp_path, "pw")) == "pw"
+    assert _leftover_temps(tmp_path) == []
+    first = (tmp_path / ss.KEY_FILE).read_bytes()
+    assert ss.ensure_key(tmp_path) is False
+    assert (tmp_path / ss.KEY_FILE).read_bytes() == first
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX modes")
+def test_a_key_made_without_a_hard_link_is_owner_only_on_posix(tmp_path, monkeypatch):
+    _links_refused(monkeypatch)
+    ss.ensure_key(tmp_path)
+    assert stat.S_IMODE((tmp_path / ss.KEY_FILE).stat().st_mode) == 0o600
+
+
+def _as_root(monkeypatch):
+    chowned = []
+    monkeypatch.setattr(os, "geteuid", lambda: 0, raising=False)
+    monkeypatch.setattr(os, "chown", lambda path, uid, gid: chowned.append((os.path.basename(path), uid, gid)), raising=False)
+    return chowned
+
+
+# A root-owned 0600 key the service can't read would make every connector
+# credential unusable.
+def test_root_hands_a_new_key_to_the_data_dir_owner(tmp_path, monkeypatch):
+    chowned = _as_root(monkeypatch)
+    ss.ensure_key(tmp_path)
+    owner = tmp_path.stat()
+    assert chowned
+    assert all(entry[1:] == (owner.st_uid, owner.st_gid) for entry in chowned)
+    # The file that was linked into place carried the owner with it.
+    assert any(name.startswith(ss.KEY_FILE + ".") and name.endswith(".tmp") for name, _, _ in chowned)
+
+
+def test_root_hands_a_key_made_without_a_hard_link_to_the_data_dir_owner(tmp_path, monkeypatch):
+    _links_refused(monkeypatch)
+    chowned = _as_root(monkeypatch)
+    ss.ensure_key(tmp_path)
+    owner = tmp_path.stat()
+    assert (ss.KEY_FILE, owner.st_uid, owner.st_gid) in chowned
+
+
+def test_a_key_made_by_a_non_root_user_is_not_handed_over(tmp_path, monkeypatch):
+    chowned = _as_root(monkeypatch)
+    monkeypatch.setattr(os, "geteuid", lambda: 1000, raising=False)
+    ss.ensure_key(tmp_path)
+    assert chowned == []
+
+
+def test_without_hard_links_a_key_another_process_made_first_is_kept(tmp_path, monkeypatch):
+    theirs = ss.Fernet.generate_key()
+    _links_refused(monkeypatch, before_raising=lambda: (tmp_path / ss.KEY_FILE).write_bytes(theirs))
+    assert ss.ensure_key(tmp_path) is False
+    assert (tmp_path / ss.KEY_FILE).read_bytes() == theirs
+    assert _leftover_temps(tmp_path) == []
+
+
 @pytest.mark.parametrize("secret", ["pässword", "enc:v1:abc", "x" * 1000])
 def test_encrypt_decrypt_round_trip(tmp_path, secret):
     token = ss.encrypt(tmp_path, secret)
@@ -231,6 +305,52 @@ def test_init_db_with_an_unusable_key_and_a_plain_row_still_starts(tmp_path):
         _raw_insert(engine, auth_password="pw")
         init_db(engine)
         assert _raw_row(engine)[0] == "pw"
+    finally:
+        engine.dispose()
+
+
+def test_rewrite_lets_a_non_busy_operational_error_propagate(tmp_path, monkeypatch):
+    from sqlalchemy.exc import OperationalError
+
+    engine = make_engine(tmp_path / "ioerr.db")
+    try:
+        init_db(engine)
+        _raw_insert(engine, auth_password="pw")
+
+        def boom(*args, **kwargs):
+            raise OperationalError("x", None, Exception("disk I/O error"))
+
+        monkeypatch.setattr(ss, "_updates_for", boom)
+        with pytest.raises(OperationalError):
+            ss.rewrite_plaintext(engine)
+    finally:
+        engine.dispose()
+
+
+def test_rewrite_under_a_busy_history_file_warns_and_retries_later(tmp_path, monkeypatch, caplog):
+    import sqlite3
+
+    from bacpack import db
+
+    monkeypatch.setattr(db, "BUSY_TIMEOUT_SECONDS", 0.2)
+    engine = make_engine(tmp_path / "busy.db")
+    try:
+        init_db(engine)
+        _raw_insert(engine, auth_password="pw")
+        before = _raw_row(engine)
+        holder = sqlite3.connect(db.history_db_path(tmp_path / "busy.db"), isolation_level=None)
+        holder.execute("BEGIN IMMEDIATE")
+        try:
+            with caplog.at_level(logging.WARNING, logger="bacpack.security"):
+                assert ss.rewrite_plaintext(engine) == (0, 0)
+        finally:
+            holder.execute("ROLLBACK")
+            holder.close()
+        assert _raw_row(engine) == before
+        assert "database is busy" in caplog.text
+        assert "pw" not in caplog.text.replace("password", "")
+        assert ss.rewrite_plaintext(engine) == (1, 0)
+        assert _raw_row(engine)[0].startswith("enc:v1:")
     finally:
         engine.dispose()
 

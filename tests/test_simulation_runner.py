@@ -3,6 +3,7 @@ testing shape as PendingWritePoller."""
 from __future__ import annotations
 
 import random
+import time
 from unittest.mock import Mock
 
 import pytest
@@ -55,6 +56,26 @@ def _live(app, object_type, instance=1):
 
 def _runner(session_factory, app, clock):
     return SimulationRunner(session_factory, app, 1, clock=clock, rng=random.Random(7))
+
+
+@pytest.mark.asyncio
+async def test_the_default_clock_is_host_time_not_the_device_clock(session_factory):
+    # A time sync or UI clock change must not jump every simulated wave.
+    from bacpack import device_clock
+
+    device_clock.set_offset(3 * 86400)
+    try:
+        runner = SimulationRunner(session_factory, _app_without_objects(session_factory), 1)
+        assert abs(runner.clock() - time.time()) < 1.0
+    finally:
+        device_clock.set_offset(0)
+
+
+def _app_without_objects(session_factory):
+    with session_factory() as session:
+        session.add(Device(id=1, name="D"))
+        session.commit()
+        return build_application(session.get(Device, 1), [])
 
 
 @pytest.mark.asyncio

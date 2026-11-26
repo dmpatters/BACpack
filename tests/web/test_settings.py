@@ -47,7 +47,8 @@ def test_update_network_settings_rejects_bad_bind_address(web_client):
 def test_network_settings_exposes_trend_retention_and_soft_limit(web_client):
     r = web_client.get("/api/settings/network")
     body = r.json()
-    assert body["trend_retention_days"] == 14 or body["trend_retention_days"] == 90
+    # 14 is the log retention default: the wrong setting would pass an "or".
+    assert body["trend_retention_days"] == 90
     assert body["trend_soft_limit_mb"] is None
 
     r = web_client.put("/api/settings/network", json={"trend_retention_days": 30, "trend_soft_limit_mb": 5})

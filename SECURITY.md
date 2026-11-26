@@ -19,6 +19,7 @@ BACpack may run next to or inside live building systems. This page says what it 
 - Whoever can read the data folder or run as the service account has everything, including `bacpack.db` and `secret.key`. Keep the permissions the installer sets.
 - The first visitor claims a fresh install. For an unattended install, make the choice in the installer with `--login-user` / `-LoginUser`, or `--no-login` / `-NoLogin`.
 - Compare the self-signed certificate's fingerprint with the one on the Web Server page before you accept it, or install your own.
+- With the login off, BACpack answers only to its own names: its IP addresses, this computer's name and `name.local`, `localhost` and the names on its certificate (a `*.` name covers one more label). Any other name is refused with 421, so a web page can't reach it through DNS rebinding. To open it by another name, use a certificate that carries that name, or turn the login on.
 - Running behind a reverse proxy is untested. The lockout would see only the proxy.
 - There is no redundancy or high availability, and no audit trail beyond the Logs page.
 

@@ -5,6 +5,7 @@ retargeted to a unicast to the receiver."""
 from __future__ import annotations
 
 import asyncio
+import logging
 
 import pytest
 import pytest_asyncio
@@ -13,7 +14,7 @@ from bacpypes3.pdu import Address
 from bacpypes3.primitivedata import ObjectIdentifier
 
 from bacpack.models import BacnetObject, Device
-from bacpack.object_builder import build_application
+from tests.udp_bind import build_on_loopback
 
 _RECIPIENT = {
     "recipient": {"kind": "device", "instance_number": 2},
@@ -27,12 +28,7 @@ _RECIPIENT = {
 
 
 def _build(session_factory, device_id, bind_address):
-    with session_factory() as session:
-        device = session.get(Device, device_id)
-        try:
-            return build_application(device, list(device.objects), bind_address=bind_address)
-        except OSError as exc:
-            pytest.skip(f"can't bind {bind_address}: {exc}")
+    return build_on_loopback(session_factory, device_id, bind_address)
 
 
 @pytest_asyncio.fixture
@@ -96,6 +92,59 @@ async def test_an_alarm_reaches_a_device_recipient_found_by_who_is(pair):
     assert apdu.eventObjectIdentifier == ObjectIdentifier("analog-input,1")
     assert apdu.toState.attr == "highLimit"
     assert int(apdu.processIdentifier) == 5
+
+
+@pytest.mark.asyncio
+async def test_a_recipient_that_rejects_a_confirmed_notification_is_logged(session_factory, caplog):
+    # A BACpack device has no handler for ConfirmedEventNotification, so
+    # bacpypes3 answers Reject unrecognized-service, as a front end that
+    # expects another process ID does.
+    recipient = dict(
+        _RECIPIENT,
+        recipient={"kind": "address", "address": "127.0.0.2"},
+        confirmed=True,
+    )
+    with session_factory() as session:
+        sender = Device(id=1, name="Sender")
+        session.add_all(
+            [
+                sender,
+                Device(id=2, name="Receiver"),
+                BacnetObject(
+                    device=sender, object_type="notification-class", instance_number=1, name="NC-1",
+                    notification_recipient_list=[recipient],
+                ),
+                BacnetObject(
+                    device=sender, object_type="analog-input", instance_number=1, name="AI-1",
+                    units="degreesFahrenheit", alarming_enabled=True, notification_class_instance=1,
+                    alarm_high_limit=100.0, alarm_low_limit=0.0, alarm_notify_type="alarm",
+                ),
+            ]
+        )
+        session.commit()
+    sender_app = _build(session_factory, 1, "127.0.0.1/8")
+    try:
+        receiver_app = _build(session_factory, 2, "127.0.0.2/8")
+    except BaseException:
+        sender_app.close()
+        raise
+    try:
+        with caplog.at_level(logging.WARNING, logger="bacpack.bacpypes3_compat"):
+            sender_app.get_object_id(ObjectIdentifier("analog-input,1")).presentValue = 150.0
+            for _ in range(100):
+                lines = [r.getMessage() for r in caplog.records if r.name == "bacpack.bacpypes3_compat"]
+                if lines:
+                    break
+                await asyncio.sleep(0.05)
+        assert lines == [
+            'event notification from analog-input:1 "AI-1" to 127.0.0.2, process ID 5, '
+            "to-offnormal: refused, reject: unrecognized-service"
+        ]
+        traffic = [e["detail"] for e in sender_app.traffic_log.recent() if e["event_type"] == "event-notification"]
+        assert traffic == ["-> 127.0.0.2 obj analog-input:1 to high-limit"]
+    finally:
+        sender_app.close()
+        receiver_app.close()
 
 
 @pytest.mark.asyncio

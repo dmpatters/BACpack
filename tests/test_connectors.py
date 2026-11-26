@@ -212,8 +212,7 @@ async def test_stop_clears_schedule_and_status(session_factory, monkeypatch):
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     poller = ConnectorPoller(session_factory, client=client)
     poller.start()
-    await asyncio.sleep(0.09)
-    assert connector_id in poller.status
+    await _until(lambda: connector_id in poller.status)
     poller.stop()
 
     assert poller._due == {}
@@ -405,7 +404,7 @@ async def test_basic_auth_sent_on_request(session_factory, monkeypatch):
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     poller = ConnectorPoller(session_factory, client=client)
     poller.start()
-    await asyncio.sleep(0.09)
+    await _until(lambda: "authorization" in seen_headers)
     poller.stop()
 
     assert seen_headers["authorization"] is not None
@@ -432,7 +431,7 @@ async def test_bearer_token_sent_as_header(session_factory, monkeypatch):
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     poller = ConnectorPoller(session_factory, client=client)
     poller.start()
-    await asyncio.sleep(0.09)
+    await _until(lambda: "authorization" in seen_headers)
     poller.stop()
 
     assert seen_headers["authorization"] == "Bearer secret-token"
@@ -454,9 +453,9 @@ async def test_disabled_connector_is_not_polled(session_factory, monkeypatch):
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     poller = ConnectorPoller(session_factory, client=client)
-    poller.start()
-    await asyncio.sleep(0.09)
-    poller.stop()
+    # Polled directly: a scheduler run that waits a while and sees nothing
+    # would pass with the enabled filter gone.
+    await poller._poll_one(connector_id)
 
     assert calls == []
     assert connector_id not in poller.status
@@ -534,8 +533,7 @@ async def test_stop_cancels_scheduler_task(session_factory, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_poll_does_not_queue_a_write_for_a_non_running_device(session_factory, monkeypatch):
-    monkeypatch.setattr(connectors, "SCHEDULER_TICK_SECONDS", 0.01)
+async def test_poll_does_not_queue_a_write_for_a_non_running_device(session_factory):
     with session_factory() as session:
         device = Device(id=1, name="D")  # process_status defaults to "stopped"
         session.add(device)
@@ -547,14 +545,19 @@ async def test_poll_does_not_queue_a_write_for_a_non_running_device(session_fact
         session.add(ConnectorMapping(connector_id=connector.id, object_id=obj.id, json_path="v"))
         session.commit()
         object_id = obj.id
+        connector_id = connector.id
 
-    transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"v": 42.0}))
-    client = httpx.AsyncClient(transport=transport)
+    fetched = []
+
+    def handler(request):
+        fetched.append(request)
+        return httpx.Response(200, json={"v": 42.0})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     poller = ConnectorPoller(session_factory, client=client)
-    poller.start()
-    await asyncio.sleep(0.09)
-    poller.stop()
+    await poller._poll_one(connector_id)
 
+    assert fetched  # the value was fetched, then dropped
     with session_factory() as session:
         obj = session.get(BacnetObject, object_id)
         assert obj.runtime.pending_feed_queued is False
@@ -653,10 +656,9 @@ async def test_scheduler_survives_an_unexpected_exception_in_poll_one(session_fa
 
 
 @pytest.mark.asyncio
-async def test_bacnet_connectors_are_ignored_by_the_http_poller(session_factory, monkeypatch):
+async def test_bacnet_connectors_are_ignored_by_the_http_poller(session_factory):
     # bacnet connectors run inside their device's process
     # (bacnet_connectors.py); the parent's HTTP poller must never pick one up.
-    monkeypatch.setattr(connectors, "SCHEDULER_TICK_SECONDS", 0.01)
     with session_factory() as session:
         device = Device(id=599001, name="D")
         connector = Connector(
@@ -675,9 +677,7 @@ async def test_bacnet_connectors_are_ignored_by_the_http_poller(session_factory,
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     poller = ConnectorPoller(session_factory, client=client)
-    poller.start()
-    await asyncio.sleep(0.09)
-    poller.stop()
+    await poller._poll_one(connector_id)
 
     assert calls == []
     assert connector_id not in poller.status
@@ -735,8 +735,10 @@ async def test_stop_cancels_polls_in_flight(session_factory, monkeypatch):
     monkeypatch.setattr(connectors, "SCHEDULER_TICK_SECONDS", 0.01)
     _make_two_connectors(session_factory)
     cancelled = []
+    started = []
 
     async def handler(request):
+        started.append(request.url.host)
         try:
             await asyncio.sleep(2)
         except asyncio.CancelledError:
@@ -747,9 +749,9 @@ async def test_stop_cancels_polls_in_flight(session_factory, monkeypatch):
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     poller = ConnectorPoller(session_factory, client=client)
     poller.start()
-    await asyncio.sleep(0.1)
+    await _until(lambda: len(started) == 2)
     poller.stop()
-    await asyncio.sleep(0.05)
+    await _until(lambda: len(cancelled) == 2)
 
     assert sorted(cancelled) == ["fast.invalid", "slow.invalid"]
     await client.aclose()
@@ -789,7 +791,8 @@ async def test_a_poll_finishing_after_a_delete_or_disable_writes_nothing(session
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     poller = ConnectorPoller(session_factory, client=client)
     poller.start()
-    await asyncio.sleep(0.15)
+    # The poll has run and finished (a rescheduled one finds nothing to poll).
+    await _until(lambda: calls and connector_id not in poller._in_flight)
     poller.stop()
     await client.aclose()
 
@@ -1018,6 +1021,54 @@ async def test_a_cookie_header_typed_into_a_connector_is_still_sent(session_fact
     assert (await poller.preview(connector_id))["ok"] is True
 
     assert cookies_seen == ["mine=1"]
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "location,kept",
+    [
+        ("http://example.invalid/new", True),
+        ("https://example.invalid/new", True),
+        ("http://other.invalid/new", False),
+    ],
+)
+async def test_a_typed_in_cookie_follows_a_redirect_only_where_credentials_do(session_factory, location, kept):
+    # httpx rebuilds Cookie from the client's jar on every redirect, and the
+    # poller's jar is always empty, so the connector's own header is put back.
+    connector_id, _, _ = _make_connector(
+        session_factory, url="http://example.invalid/old", headers={"Cookie": "mine=1"}
+    )
+    handler, seen = _redirect_capture(location)
+    poller, client = _poller(session_factory, handler)
+
+    assert (await poller.preview(connector_id))["ok"] is True
+
+    assert seen[0].get("cookie") == ("mine=1" if kept else None)
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_a_typed_in_cookie_stays_dropped_after_redirecting_back(session_factory):
+    connector_id, _, _ = _make_connector(
+        session_factory, url="http://example.invalid/old", headers={"cookie": "mine=1"}
+    )
+    seen = []
+
+    def handler(request):
+        if request.url.path == "/old":
+            return httpx.Response(302, headers={"location": "http://other.invalid/hop"})
+        if request.url.path == "/hop":
+            seen.append(request.headers.get("cookie"))
+            return httpx.Response(302, headers={"location": "http://example.invalid/new"})
+        seen.append(request.headers.get("cookie"))
+        return httpx.Response(200, json={"data": {"temp": 72.5}})
+
+    poller, client = _poller(session_factory, handler)
+
+    assert (await poller.preview(connector_id))["ok"] is True
+
+    assert seen == [None, None]
     await client.aclose()
 
 

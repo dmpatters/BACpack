@@ -2,7 +2,7 @@
 
 Part of the [BACpack guide](README.md).
 
-The web UI is at `https://<host>:8000`. The [sample building](sample-building.md) gives you four devices to look at.
+The web UI is at `https://<host>:8000`. With the login off, open it by its IP address, its computer name (or `name.local`) or `localhost`; another name gets "misdirected request". The [sample building](sample-building.md) gives you four devices to look at.
 
 ## Devices
 
@@ -29,7 +29,7 @@ The tabs are **General**, **Trending** (interval or COV, kept as a native Trend_
 
 `/connectors` has HTTP pull connectors (JSON path or plain text, scale, offset or value map, basic or bearer auth) and BACnet connectors (read, write or proxy mappings to one remote device).
 
-Credentials are stored encrypted with the key in `secret.key` in the data folder. Back that file up with the database. A credential whose key is lost has to be entered again. The URL is stored and exported as typed, so keep credentials out of it.
+Credentials are stored encrypted with the key in `secret.key` in the data folder. Back that file up with the database. A credential whose key is lost has to be entered again. The URL is stored and exported as typed, so keep credentials out of it. Changing a URL to another host, port or scheme clears the saved password, token and header values, so enter them again (a move from http to https on the same host and default ports keeps them).
 
 ## Trend Storage, Logs
 
@@ -41,7 +41,7 @@ Credentials are stored encrypted with the key in `secret.key` in the data folder
 
 ## Security
 
-`/settings/security` holds the web UI login and **API keys** for scripts. Sessions end after 8 hours without a request. Five failed logins from one address lock it out for 15 minutes.
+`/settings/security` holds the web UI login and **API keys** for scripts. Sessions end after 8 hours without a request. Five failed logins from one address lock it out for 15 minutes, and wrong current passwords (changing the password, turning the login off, creating a key) count toward the same lock. Turning the login on offers to revoke keys made while it was off.
 
 ## Web Server
 
@@ -65,7 +65,7 @@ The page downloads the public certificate. **Regenerate** makes a new one, for e
 - `GET /api/devices/{id}/objects/{object_id}/live` returns an object's live state.
 - `.../trend/range?start=&end=` returns its trend between two times.
 
-With a login on, a script sends an API key (create one under **Security**; it is shown once). Without one the request gets 401.
+With a login on, a script sends an API key (create one under **Security**, where creating one asks for your login password; it is shown once. Changing the password there can revoke every key with a tick box). Without one the request gets 401.
 
 ```
 curl --cacert bacpack-certificate.pem -H "Authorization: Bearer bpk_..." https://<host>:8000/api/devices

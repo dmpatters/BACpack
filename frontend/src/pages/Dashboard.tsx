@@ -3,7 +3,7 @@ import { Link, useLocation, useMatch, useNavigate } from "react-router-dom";
 import SidePanel from "../components/SidePanel";
 import NewDeviceForm from "./DeviceNew";
 import ImportEdePanel from "../components/ImportEdePanel";
-import SampleBuildingPanel from "../components/SampleBuildingPanel";
+import SampleBuildingPanel, { sampleNotice } from "../components/SampleBuildingPanel";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { devicesApi, engineApi } from "../api/endpoints";
 import DeviceCard from "../components/DeviceCard";
@@ -152,7 +152,11 @@ export default function Dashboard() {
         <NewDeviceForm onCreated={(device) => navigate(`/devices/${device.id}`)} />
       </SidePanel>
       <ImportEdePanel open={importEdeOpen} onClose={closePanel} />
-      <SampleBuildingPanel open={sampleOpen} onClose={closePanel} />
+      <SampleBuildingPanel
+        open={sampleOpen}
+        onClose={closePanel}
+        onLoaded={(result) => setNotice(sampleNotice(result))}
+      />
     </>
   );
 }

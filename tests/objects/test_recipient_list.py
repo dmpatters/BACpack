@@ -220,8 +220,9 @@ async def test_recipient_list_write_through_the_request_decode(session_factory):
 @pytest.mark.asyncio
 async def test_other_notification_class_properties_stay_read_only(session_factory):
     app, nc = await _build(session_factory, [_entry()])
-    with pytest.raises(PropertyError):
+    with pytest.raises(PropertyError) as exc:
         await nc.write_property("notificationClass", Unsigned(9))
+    assert exc.value.errorCode == "writeAccessDenied"
 
 
 @pytest.mark.asyncio

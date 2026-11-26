@@ -303,6 +303,32 @@ def test_trend_log_whose_name_clashes_is_skipped_with_the_planners_reason():
     assert "already an object's name" in _skipped(plan, "Alpha.Log")["reason"]
 
 
+def _walks_with_logs(count, existing=None):
+    """Whole-table walks of the planned rows and the file's rows when `count`
+    points each get a log by name, and as many more logs match nothing."""
+    from bacpack.ede_plan import EdePlanner, to_raw
+
+    from tests.row_walks import WalkCountingRows
+
+    rows = [ede_row(type=0, instance=i, name=f"P{i}", keyname=f"K{i}") for i in range(1, count + 1)]
+    rows += [_log_row(f"P{i}.Log", instance=i) for i in range(1, count + 1)]
+    rows += [_log_row(f"Q{i}.Log", instance=10000 + i) for i in range(1, count + 1)]
+    mine = _file(rows).rows
+    planner = EdePlanner(to_raw(mine, device_instance=1000), 0, "Plant", ede_rows=mine, existing=existing)
+    planner.rows = WalkCountingRows()
+    planner.ede_rows = WalkCountingRows(planner.ede_rows)
+    planner.plan()
+    assert all(planner.rows[("analog-input", i)]["trend_log_name"] == f"P{i}.Log" for i in range(1, count + 1))
+    assert sum(s["code"] == "standin-unmatched" for s in planner.skipped) == count
+    return planner.rows.walks, planner.ede_rows.walks
+
+
+def test_matching_trend_logs_does_not_walk_every_row_once_per_log():
+    # Per-log scans are O(logs x objects): minutes on a field-sized file.
+    assert _walks_with_logs(300) == _walks_with_logs(30)
+    assert _walks_with_logs(300, _existing("merge")) == _walks_with_logs(30, _existing("merge"))
+
+
 def test_a_log_never_attaches_to_a_schedule():
     plan = _plan([ede_row(type=17, name="Occupancy"), _log_row("Occupancy.Trend", instance=50)])
     assert _skipped(plan, "Occupancy.Trend")["code"] == "standin-unmatched"

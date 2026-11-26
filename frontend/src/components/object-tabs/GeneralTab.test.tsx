@@ -210,6 +210,22 @@ describe("GeneralTab", () => {
     expect(screen.getByLabelText("Name")).toHaveValue("AI-renamed");
     expect(screen.getByLabelText("Description")).toHaveValue("Simulated analog input edited");
   });
+
+  it("saves a change back to the old value before the object refetches", async () => {
+    // The obj prop still holds the first value until the refetch lands, so
+    // the second patch must be worked out against what was saved.
+    vi.mocked(objectsApi.update).mockReset().mockResolvedValue({} as never);
+    const user = userEvent.setup();
+    renderTab(makeObj({ object_type: "analog-value" }));
+    await user.type(screen.getByLabelText("Description"), " x");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Saved");
+    await user.clear(screen.getByLabelText("Description"));
+    await user.type(screen.getByLabelText("Description"), "Simulated analog input");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(objectsApi.update).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(objectsApi.update).mock.calls[1][2]).toEqual({ description: "Simulated analog input" });
+  });
 });
 
 describe("GeneralTab State_Text label with a comma, and units", () => {

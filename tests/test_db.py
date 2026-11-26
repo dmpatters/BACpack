@@ -445,3 +445,46 @@ def test_a_session_closed_without_commit_releases_both_locks(tmp_path):
             other.rollback()
         finally:
             other.close()
+
+
+# --- A restart while a device holds the history file's write lock -------
+
+
+def _hold_history_lock(db_path):
+    holder = sqlite3.connect(history_db_path(db_path), isolation_level=None)
+    holder.execute("BEGIN IMMEDIATE")
+    return holder
+
+
+def test_init_db_on_an_up_to_date_install_needs_no_history_write_lock(tmp_path, monkeypatch):
+    from bacpack import db
+
+    path = tmp_path / "restart.db"
+    monkeypatch.setattr(db, "BUSY_TIMEOUT_SECONDS", 0.2)
+    first = make_engine(path)
+    db.init_db(first)
+    first.dispose()
+    holder = _hold_history_lock(path)
+    engine = make_engine(path)
+    try:
+        db.init_db(engine)
+    finally:
+        holder.execute("ROLLBACK")
+        holder.close()
+        engine.dispose()
+
+
+def test_init_db_recreates_a_missing_history_counters_row(tmp_path):
+    from bacpack import db
+
+    path = tmp_path / "counters.db"
+    engine = make_engine(path)
+    try:
+        db.init_db(engine)
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM history.history_counters"))
+        db.init_db(engine)
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT count(*) FROM history.history_counters")).scalar_one() == 1
+    finally:
+        engine.dispose()

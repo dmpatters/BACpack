@@ -50,7 +50,7 @@ def test_startup_exits_78_on_an_old_sqlite(tmp_path, monkeypatch):
     monkeypatch.setattr(app_module, "sqlite_version_problem", lambda: "SQLite 3.34.1 is too old")
     app = app_module.create_app(db_path=str(tmp_path / "old.db"))
     with pytest.raises(_Exited) as caught:
-        with TestClient(app):
+        with TestClient(app, base_url="http://127.0.0.1"):
             pass
     assert caught.value.code == lifecycle.SQLITE_TOO_OLD_EXIT_CODE
 

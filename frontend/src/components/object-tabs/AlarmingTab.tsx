@@ -44,6 +44,15 @@ export function shownLimitEnable(value: AlarmFieldsValue): [boolean, boolean] {
   return value.alarm_limit_enable ?? [value.alarm_low_limit !== null, value.alarm_high_limit !== null];
 }
 
+/** An explicit Limit_Enable with a side whose limit is empty turns that side
+ * off: the save would otherwise be refused as "enabled with no value". */
+export function withoutEmptySides<T extends AlarmFieldsValue>(value: T): T {
+  const enable = value.alarm_limit_enable;
+  if (enable === null) return value;
+  const fitted: [boolean, boolean] = [enable[0] && value.alarm_low_limit !== null, enable[1] && value.alarm_high_limit !== null];
+  return fitted[0] === enable[0] && fitted[1] === enable[1] ? value : { ...value, alarm_limit_enable: fitted };
+}
+
 // `part` picks one of the tab's two groups; without it both render.
 export function AlarmFieldsEditor({
   objectType,
@@ -70,18 +79,13 @@ export function AlarmFieldsEditor({
   const [alarmValuesText, setAlarmValuesText] = useState(() => (value.alarm_values ?? []).join(", "));
   const [alarmValuesError, setAlarmValuesError] = useState<string | null>(null);
 
-  // An explicit Limit_Enable can't keep a side on once its limit is gone:
-  // the save would be refused as "enabled with no value".
-  const withLimit = (side: "alarm_low_limit" | "alarm_high_limit", text: string): AlarmFieldsValue => {
-    const limit = text === "" ? null : Number(text);
-    const next = { ...value, [side]: limit };
-    if (limit === null && value.alarm_limit_enable !== null) {
-      const enable: [boolean, boolean] = [...value.alarm_limit_enable];
-      enable[side === "alarm_low_limit" ? 0 : 1] = false;
-      next.alarm_limit_enable = enable;
-    }
-    return next;
-  };
+  // Limit_Enable is left alone here: a number input reports "" mid-edit
+  // (cleared, or just "-"), so unticking on "" would lose the enable while
+  // a limit is retyped. withoutEmptySides settles it at save.
+  const withLimit = (side: "alarm_low_limit" | "alarm_high_limit", text: string): AlarmFieldsValue => ({
+    ...value,
+    [side]: text === "" ? null : Number(text),
+  });
   const toggleLimitEnable = (slot: 0 | 1, on: boolean) => {
     const enable: [boolean, boolean] = [...shownLimitEnable(value)];
     enable[slot] = on;
@@ -299,6 +303,8 @@ export default function AlarmingTab({
       queryClient.invalidateQueries({ queryKey: ["objects", deviceId] });
       setSaveCount((count) => count + 1);
       setBaseline(sent);
+      // Shows a side the save turned off, so the form isn't left dirty.
+      setDraft((d) => withoutEmptySides(d));
     },
   });
 
@@ -320,14 +326,15 @@ export default function AlarmingTab({
           // Only the fields changed here: a BACnet client may have written
           // others since this tab loaded, and saving the whole form would
           // put the old values back. alarming_enabled is always sent.
+          const fitted = withoutEmptySides(draft);
           const saved = settled(baseline);
-          const shown = settled(draft);
+          const shown = settled(fitted);
           const changed = Object.fromEntries(
             (Object.keys(savedAlarmFields(obj)) as (keyof AlarmFieldsValue)[])
               .filter((k) => JSON.stringify(shown[k]) !== JSON.stringify(saved[k]))
-              .map((k) => [k, draft[k]])
+              .map((k) => [k, fitted[k]])
           );
-          save.mutate({ patch: { ...changed, alarming_enabled: alarmingEnabledValue }, sent: draft });
+          save.mutate({ patch: { ...changed, alarming_enabled: alarmingEnabledValue }, sent: fitted });
         }}
       >
         <CheckField

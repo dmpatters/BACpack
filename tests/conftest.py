@@ -69,17 +69,34 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.xdist_group("bacnet-udp"))
 
 
+def udp_grouping_problem(option, workerinput, nodeid) -> str | None:
+    """Why a test in a UDP file can't run safely here, or None.
+
+    Spread over several xdist workers, UDP tests fail at random with a
+    misleading "port already in use"; fail them with the reason instead.
+    xdist groups a test by suffixing its node id, so a loadgroup run without
+    the suffix means a pytest/xdist pairing broke the grouping.
+    """
+    if getattr(option, "loadgroup", False):
+        if "@bacnet-udp" not in nodeid:
+            return "--dist loadgroup did not put this test in the bacnet-udp group: check the pytest/pytest-xdist versions"
+        return None
+    if workerinput is not None and workerinput.get("workercount", 1) > 1:
+        return (
+            "run with -n auto --dist loadgroup: tests that serve BACnet on fixed UDP ports "
+            "must share one worker, or they clash on the ports"
+        )
+    return None
+
+
 @pytest.fixture(autouse=True)
 def _guard_udp_binds(request, monkeypatch):
     if _in_udp_file(request.node):
-        # xdist groups a test by suffixing its node id. If a pytest/xdist
-        # pairing stops that working, UDP tests spread over workers and fail
-        # at random on port clashes; fail them with the reason instead.
-        if getattr(request.config.option, "loadgroup", False) and "@bacnet-udp" not in request.node.nodeid:
-            pytest.fail(
-                "--dist loadgroup did not put this test in the bacnet-udp group: check the pytest/pytest-xdist versions",
-                pytrace=False,
-            )
+        problem = udp_grouping_problem(
+            request.config.option, getattr(request.config, "workerinput", None), request.node.nodeid
+        )
+        if problem:
+            pytest.fail(problem, pytrace=False)
         yield
         return
     bound = []
@@ -167,8 +184,21 @@ def web_client(tmp_path, _template_db, monkeypatch):
     db_path = _copy_template(_template_db, tmp_path / "web-test.db")
     monkeypatch.setattr("bacpack.web.app.init_db", lambda engine: None)
     app = create_app(db_path=str(db_path), process_factory=process_factory)
-    with TestClient(app) as client:
+    with TestClient(app, base_url="http://127.0.0.1") as client:
         yield client
+
+
+@pytest.fixture(autouse=True)
+def _reset_log_capture():
+    """install_log_capture adds handlers to process-wide loggers, the library
+    ones included; a test that installs them must not leave them for the next."""
+    yield
+    import logging
+
+    from bacpack.log_capture import remove_log_capture_handlers
+
+    remove_log_capture_handlers()
+    logging.getLogger("bacpack").setLevel(logging.NOTSET)
 
 
 @pytest.fixture(autouse=True)

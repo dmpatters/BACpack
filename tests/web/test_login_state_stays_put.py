@@ -18,7 +18,7 @@ def test_settings_defaults_hold_no_login_state():
 def test_login_state_is_not_in_a_config_export(web_client):
     enable_login(web_client, "PLANT-owner")
     session_cookie(web_client)
-    web_client.post("/api/settings/api-keys", json={"name": "PLANT-keyname"})
+    web_client.post("/api/settings/api-keys", json={"name": "PLANT-keyname", "current_password": LOGIN_PASSWORD})
     exported = web_client.get("/api/config/export").text.lower()
     for needle in ("login", "plant-owner", "plant-keyname", "api_key", "session", "bpk_"):
         assert needle not in exported, needle
@@ -33,7 +33,7 @@ def test_config_import_cannot_carry_login_settings(key):
 def test_importing_a_config_leaves_login_sessions_and_keys_alone(web_client):
     enable_login(web_client)
     session_cookie(web_client)
-    web_client.post("/api/settings/api-keys", json={"name": "k"})
+    web_client.post("/api/settings/api-keys", json={"name": "k", "current_password": LOGIN_PASSWORD})
     r = web_client.post(
         "/api/config/import?dry_run=false",
         files={"file": ("c.json", json.dumps({"version": 1, "devices": []}).encode(), "application/json")},
@@ -52,7 +52,7 @@ def test_diagnostics_download_leaves_out_credentials_and_keys(web_client):
 
     enable_login(web_client, "PLANT-owner")
     session_cookie(web_client)
-    key = web_client.post("/api/settings/api-keys", json={"name": "k"}).json()["key"]
+    key = web_client.post("/api/settings/api-keys", json={"name": "k", "current_password": LOGIN_PASSWORD}).json()["key"]
     r = web_client.get("/api/diagnostics/download?real_values=true")
     assert r.status_code == 200, r.text
     with zipfile.ZipFile(io.BytesIO(r.content)) as archive:

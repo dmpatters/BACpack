@@ -346,6 +346,64 @@ describe("DeviceSettingsTab", () => {
       expect(devicesApi.update).toHaveBeenCalledWith(599002, { bacnet_password: null });
     });
 
+    it("offers Keep password only after Clear password", async () => {
+      const user = userEvent.setup();
+      vi.mocked(devicesApi.get).mockResolvedValue({ ...device, bacnet_password_set: true });
+      renderTab();
+      await user.click(await screen.findByRole("button", { name: "Clear password" }));
+      expect(screen.getByRole("button", { name: "Keep password" })).toBeInTheDocument();
+    });
+
+    it("has no Keep password before Clear password is clicked", async () => {
+      vi.mocked(devicesApi.get).mockResolvedValue({ ...device, bacnet_password_set: true });
+      renderTab();
+      await screen.findByRole("button", { name: "Clear password" });
+      expect(screen.queryByRole("button", { name: "Keep password" })).not.toBeInTheDocument();
+    });
+
+    it("Keep password undoes Clear password and Save leaves the password alone", async () => {
+      const user = userEvent.setup();
+      vi.mocked(devicesApi.get).mockResolvedValue({ ...device, bacnet_password_set: true });
+      vi.mocked(devicesApi.update).mockResolvedValue({ ...device, bacnet_password_set: true });
+      renderTab();
+      await user.click(await screen.findByRole("button", { name: "Clear password" }));
+      await user.click(screen.getByRole("button", { name: "Keep password" }));
+      expect(screen.queryByRole("button", { name: "Keep password" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Clear password" })).toBeInTheDocument();
+      expect(screen.getByLabelText(label)).toHaveAccessibleDescription(/^Set\./);
+      await user.type(screen.getByLabelText("Vendor name"), "X");
+      await user.click(screen.getByRole("button", { name: /^save$/i }));
+      expect(vi.mocked(devicesApi.update).mock.calls[0][1]).not.toHaveProperty("bacnet_password");
+    });
+
+    it("Keep password empties a typed replacement and Save sends no password", async () => {
+      const user = userEvent.setup();
+      vi.mocked(devicesApi.get).mockResolvedValue({ ...device, bacnet_password_set: true });
+      vi.mocked(devicesApi.update).mockResolvedValue({ ...device, bacnet_password_set: true });
+      renderTab();
+      await user.click(await screen.findByRole("button", { name: "Clear password" }));
+      await user.type(screen.getByLabelText(label), "fresh");
+      await user.click(screen.getByRole("button", { name: "Keep password" }));
+      expect(screen.getByLabelText(label)).toHaveValue("");
+      await user.type(screen.getByLabelText("Vendor name"), "X");
+      await user.click(screen.getByRole("button", { name: /^save$/i }));
+      expect(vi.mocked(devicesApi.update).mock.calls[0][1]).not.toHaveProperty("bacnet_password");
+    });
+
+    it("Keep password leaves the form clean when nothing else changed", async () => {
+      const user = userEvent.setup();
+      vi.mocked(devicesApi.get).mockResolvedValue({ ...device, bacnet_password_set: true });
+      vi.mocked(devicesApi.update).mockResolvedValue({ ...device, bacnet_password_set: true });
+      renderTab();
+      await user.type(await screen.findByLabelText("Vendor name"), "X");
+      await user.click(screen.getByRole("button", { name: /^save$/i }));
+      expect(await screen.findByRole("status")).toHaveTextContent("Saved.");
+      await user.click(screen.getByRole("button", { name: "Clear password" }));
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Keep password" }));
+      expect(await screen.findByRole("status")).toHaveTextContent("Saved.");
+    });
+
     it("empties the field after a successful save", async () => {
       const user = userEvent.setup();
       vi.mocked(devicesApi.update).mockResolvedValue({ ...device, bacnet_password_set: true });

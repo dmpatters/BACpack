@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from bacpack.config_connectors import (
     SETTINGS_DEFAULTS,
     export_connectors,
@@ -208,6 +210,47 @@ def test_export_config_adds_the_keys_only_when_given(session):
     document = export_config([device], connectors=[], settings=ServerSettings(id=1))
     assert document["connectors"] == []
     assert set(document["settings"]) == set(SETTINGS_DEFAULTS)
+
+
+# Columns a config file deliberately leaves out. A new column is exported or joins this list.
+_NOT_EXPORTED = {
+    Device: {
+        "bacnet_password_hash": "a secret",
+        "clock_offset_seconds": "runtime state",
+        "created_at": "bookkeeping",
+        "database_revision": "runtime state a restore must not set",
+        "dcc_state": "runtime state",
+        "last_restore_time": "runtime state",
+    },
+    BacnetObject: {"id": "row key", "device_id": "the device it sits under"},
+    Connector: {"id": "row key", "auth_password": "a secret", "auth_token": "a secret"},
+    ConnectorMapping: {"id": "row key", "connector_id": "the connector it sits under", "mode": "always poll"},
+    ConnectorWriteMapping: {"id": "row key", "connector_id": "the connector it sits under"},
+}
+# The file names the owning device and the fed object differently from the column.
+_EXPORTED_AS = {"device_id": "device", "object_id": "object"}
+
+
+@pytest.mark.parametrize("model", list(_NOT_EXPORTED), ids=lambda m: m.__name__)
+def test_every_column_is_exported_or_named_as_left_out(session, model):
+    from bacpack.config_io import export_config
+
+    device = _device(session, objects=(("analog-value", n, f"AV-{n}") for n in (1, 2, 3)))
+    http = _http_connector(session, device, instance=3)
+    bacnet = _bacnet_connector(session, device)
+    document = export_config([device], connectors=[http, bacnet])
+    exported_device = document["devices"][0]
+    by_type = {c["type"]: c for c in document["connectors"]}
+    keys = {
+        Device: set(exported_device),
+        BacnetObject: set(exported_device["objects"][0]),
+        Connector: set(by_type["http-poll"]) | set(by_type["bacnet"]),
+        ConnectorMapping: set(by_type["http-poll"]["mappings"][0]) | set(by_type["bacnet"]["mappings"][0]),
+        ConnectorWriteMapping: set(by_type["bacnet"]["write_mappings"][0]),
+    }[model]
+
+    wanted = {_EXPORTED_AS.get(c, c) for c in model.__table__.columns.keys() if c not in _NOT_EXPORTED[model]}
+    assert wanted <= keys, f"{model.__name__} columns missing from the export: {sorted(wanted - keys)}"
 
 
 def test_listen_address_is_not_in_a_config_export_or_import(session):

@@ -26,7 +26,8 @@ def test_a_surrogate_in_a_non_text_field_is_422(web_client):
 def test_a_surrogate_in_a_key_or_nested_value_is_422(web_client):
     _create_device(web_client)
     assert _post(web_client, "/api/devices", b'{"id":5,"name":"x","\\ud800":1}').status_code == 422
-    body = b'{"object_type":"analog-value","instance_number":1,"name":"a","description":["\\ud800"]}'
+    # state_text is a list of strings, so only the guard refuses a lone surrogate in it.
+    body = b'{"object_type":"multi-state-value","instance_number":1,"name":"a","state_text":["ok","\\ud800"]}'
     assert _post(web_client, "/api/devices/599001/objects", body).status_code == 422
 
 
@@ -63,12 +64,12 @@ def test_a_chunked_body_is_read_whole_and_replayed(web_client):
 def test_a_422_that_echoes_a_surrogate_is_still_sent(web_client):
     # The login route is outside the guard; its missing password gives a 422
     # whose echoed input holds the lone surrogate.
-    r = _post(web_client, "/api/auth/login", b'{"username":"\ud800"}')
+    r = _post(web_client, "/api/auth/login", b'{"username":"\\ud800"}')
     assert r.status_code == 422
     assert "ud800" in r.text
 
 
 def test_a_422_that_echoes_a_surrogate_key_is_still_sent(web_client):
-    r = _post(web_client, "/api/auth/login", b'{"\ud800":1,"username":"a"}')
+    r = _post(web_client, "/api/auth/login", b'{"\\ud800":1,"username":"a"}')
     assert r.status_code == 422
     assert "ud800" in r.text

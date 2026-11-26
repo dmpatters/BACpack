@@ -138,6 +138,24 @@ export function RecipientListEditor({
               </td>
               <td>
                 <label className="bp-check">
+                  <span>Process ID</span>
+                  <input
+                    className="bp-input"
+                    type="number"
+                    min={0}
+                    max={4294967295}
+                    aria-label={`Recipient ${i + 1} process ID`}
+                    value={r.process_identifier}
+                    onChange={(e) => {
+                      const next = [...recipients];
+                      next[i] = { ...r, process_identifier: Number(e.target.value) };
+                      onChange(next);
+                    }}
+                  />
+                </label>
+              </td>
+              <td>
+                <label className="bp-check">
                   <input
                     type="checkbox"
                     checked={r.confirmed}
@@ -160,6 +178,7 @@ export function RecipientListEditor({
           ))}
         </tbody>
       </table>
+      {recipients.length > 0 && <p className="bp-help">Use the process ID your front end expects.</p>}
       <Button small type="button" onClick={() => onChange([...recipients, emptyRecipient()])}>
         Add recipient
       </Button>

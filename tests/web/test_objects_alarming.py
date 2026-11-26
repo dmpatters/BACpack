@@ -80,6 +80,7 @@ def test_create_notification_class_rejects_bad_priority_length(web_client):
         },
     )
     assert resp.status_code == 400
+    assert "priority must have exactly 3 entries" in resp.json()["detail"], resp.json()["detail"]
 
 
 # --- update_object/batch_update_objects notification-class validation -----
@@ -153,6 +154,7 @@ def test_update_notification_class_rejects_bad_priority_length(web_client):
         json={"notification_priority": [100, 100]},
     )
     assert r.status_code == 400, r.text
+    assert "priority must have exactly 3 entries" in r.json()["detail"], r.json()["detail"]
 
 
 def test_update_notification_class_allows_valid_priority_change(web_client):
@@ -270,6 +272,7 @@ def test_batch_update_objects_rejects_bad_notification_class_priority_shape(web_
         },
     )
     assert r.status_code == 400, r.text
+    assert "priority must have exactly 3 entries" in r.json()["detail"], r.json()["detail"]
 
 
 # --- Alarming
@@ -397,6 +400,7 @@ def test_update_object_rejects_clearing_both_analog_limits_while_alarming_enable
         json={"alarm_high_limit": None},
     )
     assert r.status_code == 400, r.text
+    assert "could never fire" in r.json()["detail"], r.json()["detail"]
 
 
 def test_update_object_rejects_enabling_alarming_with_no_notification_class(web_client):
@@ -519,12 +523,21 @@ def test_update_rejects_enabling_a_limit_side_with_no_limit(web_client):
         f"/api/devices/599001/objects/{obj['id']}", json={"alarm_limit_enable": [True, True]}
     )
     assert r.status_code == 400, r.text
+    assert "enabled on this object's Alarming tab but has no value" in r.json()["detail"], r.json()["detail"]
 
 
 def test_update_rejects_clearing_a_limit_its_limit_enable_still_uses(web_client):
     obj = _alarming_ai(web_client, alarm_low_limit=10.0, alarm_limit_enable=[True, True])
     r = web_client.put(f"/api/devices/599001/objects/{obj['id']}", json={"alarm_low_limit": None})
     assert r.status_code == 400, r.text
+    assert "enabled on this object's Alarming tab but has no value" in r.json()["detail"], r.json()["detail"]
+
+
+def test_update_allows_clearing_a_limit_whose_limit_enable_side_is_off(web_client):
+    obj = _alarming_ai(web_client, alarm_low_limit=10.0, alarm_limit_enable=[False, True])
+    r = web_client.put(f"/api/devices/599001/objects/{obj['id']}", json={"alarm_low_limit": None})
+    assert r.status_code == 200, r.text
+    assert r.json()["alarm_low_limit"] is None
 
 
 def test_batch_update_rejects_negative_alarm_time_delay(web_client):
@@ -555,6 +568,7 @@ def test_update_rejects_shrinking_state_text_below_an_alarm_value(web_client):
     )
     r = web_client.put(f"/api/devices/599001/objects/{obj['id']}", json={"state_text": ["a", "b"]})
     assert r.status_code == 400, r.text
+    assert "Alarm state numbers must be between 1 and 2" in r.json()["detail"], r.json()["detail"]
 
 
 # --- Recipients the device can't build are refused -------------------------

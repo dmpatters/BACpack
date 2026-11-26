@@ -13,10 +13,11 @@ from typing import Optional
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
-from .. import held_tasks, lifecycle, login_store, timeutil
+from .. import held_tasks, lifecycle, login_store, security_log, timeutil
 from ..login_lockout import LoginLockout
+from .host_names import host_of
 
 SESSION_COOKIE = "bacpack_session"
 
@@ -58,8 +59,9 @@ def is_cross_site(request: Request, *, cookie_authenticated: bool) -> bool:
     against Host alone (a proxy's X-Forwarded-Host isn't honoured: proxies are
     untested). A request with no Origin, Referer or Sec-Fetch-Site isn't a
     browser, so it's allowed unless it carries the session cookie: a script
-    uses an API key. DNS rebinding isn't covered: closing it
-    needs an allowed-hostnames setting."""
+    uses an API key. DNS rebinding passes this check (the attacker's name is the
+    Host): with the login off the host check in enforce_login refuses it, and
+    with the login on the session cookie does."""
     if request.method not in _UNSAFE_METHODS:
         return False
     site = request.headers.get("sec-fetch-site")
@@ -109,10 +111,34 @@ def _resolve(request: Request) -> Optional[Authenticated]:
     return None
 
 
+_HOST_REFUSED = (
+    "BACpack runs without a login, so it only answers to its own names (this computer's name, "
+    "name.local, its IP addresses, localhost, the names on its certificate). Open it by its IP "
+    "address, turn the login on, or install a certificate that carries this name."
+)
+_HOST_REFUSED_UNSET = (
+    "No login has been set up yet, and until one is, BACpack only answers to its own names (this "
+    "computer's name, name.local, its IP addresses, localhost, the names on its certificate). Open "
+    "it by its IP address or localhost to set it up."
+)
+
+
+def _refuse_host(request: Request, path: str, mode: Optional[str]) -> Response:
+    raw = (request.headers.get("host") or "(none)").strip().lower()
+    host = host_of(raw) or raw
+    if request.app.state.host_throttle.due(host, timeutil.db_utc_now()):
+        security_log.host_refused(client_ip(request), host)
+    detail = _HOST_REFUSED_UNSET if mode is None else _HOST_REFUSED
+    if _is_api_like(path):
+        return JSONResponse({"detail": detail}, status_code=421)
+    return PlainTextResponse(detail, status_code=421)
+
+
 def install_auth(app: FastAPI) -> None:
     app.state.login_lockout = LoginLockout()
     app.state.login_epoch_seen = None
     app.state.write_throttle = login_store.WriteThrottle()
+    app.state.host_throttle = login_store.WriteThrottle()
 
     @app.middleware("http")
     async def enforce_login(request: Request, call_next):
@@ -124,6 +150,9 @@ def install_auth(app: FastAPI) -> None:
             # now have a password that works.
             request.app.state.login_lockout.clear()
             request.app.state.login_epoch_seen = state.epoch
+
+        if state.mode != "login" and not request.app.state.own_names.allows(request.headers.get("host")):
+            return _refuse_host(request, path, state.mode)
 
         auth = _resolve(request) if state.mode == "login" else None
         cookie_authenticated = auth is not None and auth.kind == "session"

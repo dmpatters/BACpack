@@ -996,3 +996,127 @@ def test_mapping_switches_between_read_and_proxy(web_client):
         base, json={"object_id": ai, "remote_object_type": "analog-input", "remote_object_instance": 1}
     ).json()
     assert web_client.put(f"{base}/{on_input['id']}", json={"direction": "proxy"}).status_code == 422
+
+
+# --- A new URL on another host doesn't carry the saved credentials -----------
+
+
+def _secured(web_client, url="http://example.invalid/status"):
+    return _create_connector(
+        web_client,
+        url=url,
+        auth_type="basic",
+        auth_username="u",
+        auth_password="pw",
+        auth_token="tok",
+        headers={"X-Api-Key": "secret", "Accept": "application/json"},
+    )
+
+
+def _stored_secrets(web_client, connector_id):
+    from bacpack.models import Connector
+
+    with web_client.app.state.session_factory() as session:
+        c = session.get(Connector, connector_id)
+        return c.auth_password, c.auth_token, c.headers
+
+
+@pytest.mark.parametrize(
+    "new_url",
+    ["http://other.invalid/status", "http://example.invalid:8080/status", "https://example.invalid:8443/status"],
+)
+def test_a_url_on_another_host_port_or_scheme_clears_the_saved_credentials(web_client, new_url):
+    created = _secured(web_client)
+    r = web_client.put(f"/api/connectors/{created['id']}", json={"url": new_url})
+    assert r.status_code == 200, r.text
+    assert r.json()["header_names"] == ["X-Api-Key", "Accept"]
+    assert r.json()["missing_credentials"] == ["password", "header X-Api-Key", "header Accept"]
+    assert _stored_secrets(web_client, created["id"]) == (None, None, {"X-Api-Key": "", "Accept": ""})
+
+
+def test_headers_sent_as_null_in_the_same_save_do_not_carry_over_either(web_client):
+    created = _secured(web_client)
+    r = web_client.put(
+        f"/api/connectors/{created['id']}",
+        json={"url": "http://other.invalid/status", "headers": {"X-Api-Key": None, "Accept": "text/plain"}},
+    )
+    assert r.status_code == 200, r.text
+    assert _stored_secrets(web_client, created["id"])[2] == {"X-Api-Key": "", "Accept": "text/plain"}
+
+
+@pytest.mark.parametrize(
+    "new_url", ["http://example.invalid/other/path?x=1", "https://example.invalid/status", "HTTP://EXAMPLE.invalid:80/s"]
+)
+def test_a_url_on_the_same_origin_or_an_https_upgrade_keeps_the_saved_credentials(web_client, new_url):
+    created = _secured(web_client)
+    r = web_client.put(f"/api/connectors/{created['id']}", json={"url": new_url})
+    assert r.status_code == 200, r.text
+    assert r.json()["missing_credentials"] == []
+    assert _stored_secrets(web_client, created["id"]) == ("pw", "tok", {"X-Api-Key": "secret", "Accept": "application/json"})
+
+
+def test_a_new_token_in_the_same_save_is_kept_and_the_rest_cleared(web_client):
+    created = _secured(web_client)
+    r = web_client.put(
+        f"/api/connectors/{created['id']}", json={"url": "http://other.invalid/status", "auth_token": "new"}
+    )
+    assert r.status_code == 200, r.text
+    assert _stored_secrets(web_client, created["id"]) == (None, "new", {"X-Api-Key": "", "Accept": ""})
+
+
+def test_a_header_value_in_the_same_save_is_kept(web_client):
+    created = _secured(web_client)
+    r = web_client.put(
+        f"/api/connectors/{created['id']}",
+        json={"url": "http://other.invalid/status", "headers": {"X-Api-Key": "fresh", "Accept": None}},
+    )
+    assert r.status_code == 200, r.text
+    assert _stored_secrets(web_client, created["id"]) == (None, None, {"X-Api-Key": "fresh", "Accept": ""})
+
+
+def test_a_save_that_leaves_the_url_alone_keeps_the_saved_credentials(web_client):
+    created = _secured(web_client)
+    r = web_client.put(f"/api/connectors/{created['id']}", json={"name": "Renamed"})
+    assert r.status_code == 200, r.text
+    assert _stored_secrets(web_client, created["id"]) == ("pw", "tok", {"X-Api-Key": "secret", "Accept": "application/json"})
+
+
+def test_the_forms_own_save_body_keeps_the_saved_credentials(web_client):
+    created = _secured(web_client)
+    r = web_client.put(
+        f"/api/connectors/{created['id']}",
+        json={
+            "name": "Weather",
+            "url": created["url"],
+            "poll_interval_seconds": 120,
+            "headers": {"X-Api-Key": None, "Accept": None},
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["poll_interval_seconds"] == 120
+    assert _stored_secrets(web_client, created["id"]) == ("pw", "tok", {"X-Api-Key": "secret", "Accept": "application/json"})
+
+
+def test_an_unchanged_url_httpx_cannot_parse_keeps_the_saved_credentials(web_client):
+    from bacpack.models import Connector
+
+    created = _secured(web_client)
+    with web_client.app.state.session_factory() as session:
+        session.get(Connector, created["id"]).url = " http://example.invalid/status"
+        session.commit()
+    r = web_client.put(
+        f"/api/connectors/{created['id']}",
+        json={"url": " http://example.invalid/status", "headers": {"X-Api-Key": None, "Accept": None}},
+    )
+    assert r.status_code == 200, r.text
+    assert _stored_secrets(web_client, created["id"]) == ("pw", "tok", {"X-Api-Key": "secret", "Accept": "application/json"})
+
+
+def test_a_bacnet_connector_ignores_url_and_keeps_its_state(web_client):
+    bacnet = _create_connector(
+        web_client, name="B", type="bacnet", device_id=_create_device(web_client)["id"], remote_device_instance=2
+    )
+    r = web_client.put(f"/api/connectors/{bacnet['id']}", json={"url": "http://other.invalid/x"})
+    assert r.status_code == 200, r.text
+    assert r.json()["url"] == ""
+    assert r.json()["missing_credentials"] == []

@@ -143,8 +143,9 @@ async def test_local_notification_class_object_rejects_external_write():
         recipientList=build_recipient_list(None),
     )
     Application.from_object_list([device_obj, obj])
-    with pytest.raises(PropertyError):
+    with pytest.raises(PropertyError) as exc:
         await obj.write_property("notificationClass", Unsigned(9))
+    assert exc.value.errorCode == "writeAccessDenied"
 
 
 # --- AE-CRL-B list editing --------------------------------------------------

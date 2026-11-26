@@ -3,6 +3,7 @@ behaviour is checked live on the VMs."""
 from __future__ import annotations
 
 import configparser
+import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -93,10 +94,15 @@ def test_release_workflow_writes_only_from_the_tag_only_job():
     text = (PACKAGING.parent / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     top, _, jobs = text.partition("\njobs:\n")
     assert "permissions:\n  contents: read" in top
-    writers = [job for job in jobs.split("\n\n") if "contents: write" in job]
+    # Any spelling of a write grant counts: a key, write-all, or a flow mapping.
+    grants = re.compile(r"permissions:\s*(write-all|\{[^}]*write|(\n[ ]+[\w-]+:\s*\w+)*\n[ ]+[\w-]+:\s*write)")
+    assert not grants.search(top)
+    writers = [job for job in jobs.split("\n\n") if grants.search(job)]
     assert len(writers) == 1
     assert "if: startsWith(github.ref, 'refs/tags/v')" in writers[0]
-    assert "build_bundle.ps1" not in writers[0]
+    # The writer must not run anything from the PR's packaging folder, directly or through build_installer.ps1.
+    for name in ("build_bundle.ps1", "build_installer.ps1", "packaging"):
+        assert name not in writers[0]
 
 
 # --- login flags; behaviour is checked live on the VMs -----------------------------
@@ -216,9 +222,12 @@ def test_install_ps1_unregisters_a_fresh_service_when_the_login_step_fails():
     in setup mode, open to the network. An upgrade's service stays: its
     database already holds its login choice."""
     ps1 = _install_ps1()
-    for failure in ("'the login was not created", '"recording \'run without login\' failed'):
-        line = next(l for l in ps1.splitlines() if failure in l)
-        assert "if ($Fresh) { Remove-Service-Registration }" in line
+    block = ps1[ps1.index("Write-Host 'Creating the login...'"):ps1.index("# --- firewall")]
+    failures = [l for l in block.splitlines() if "$LASTEXITCODE" in l and "Fail" in l]
+    assert len(failures) == 3  # exit 2, any other non-zero, and the no-login step
+    for line in failures:
+        assert "if ($Fresh) { Remove-Service-Registration }" in line, line
+        assert line.index("Remove-Service-Registration") < line.index("Fail"), line
 
 
 def _sh_start_block(sh: str) -> str:
@@ -653,8 +662,12 @@ def test_setup_wizard_never_puts_the_password_on_a_command_line():
     iss = _iss()
     assert "BACPACK_LOGIN_PASSWORD" in iss
     for line in iss.splitlines():
-        if "Params :=" in line or "Options :=" in line or line.lstrip().startswith("'"):
-            assert "Values[1]" not in line and "Password" not in line
+        # The password's only uses: the environment variable and the checker.
+        if "CredPage.Values[1]" in line:
+            assert "SetEnvironmentVariableW('BACPACK_LOGIN_PASSWORD'" in line or "CheckLogin(" in line, line
+        # Any variable the command line is built in.
+        if re.match(r"\s*(Arguments|Params|Options|Parameters)\s*:=", line) or line.lstrip().startswith("'"):
+            assert "Values[1]" not in line and "Password" not in line, line
     # Set in this process around the run and cleared in a finally, even when the run throws.
     prepare = iss[iss.index("function PrepareToInstall"):iss.index("procedure CurUninstallStepChanged")]
     assert prepare.index("SetEnvironmentVariableW('BACPACK_LOGIN_PASSWORD', CredPage.Values[1])") < prepare.index("RunInstallScript(Dir, Arguments)")
@@ -702,7 +715,11 @@ def test_build_installer_installs_the_compiler_for_the_current_user_only():
 
 def test_build_installer_builds_the_bundle_first_and_hands_the_version_and_folder_to_iscc():
     script = _build_installer()
-    assert script.index("build_bundle.ps1") < script.index("bacpack.iss")
+    # The first mentions are in the header comment: compare the lines that run them.
+    lines = script.splitlines()
+    bundle = next(i for i, l in enumerate(lines) if l.lstrip().startswith("&") and "build_bundle.ps1" in l)
+    iscc = next(i for i, l in enumerate(lines) if l.lstrip().startswith("& $iscc") and "bacpack.iss" in l)
+    assert bundle < iscc
     assert "/DAppVersion=" in script and "/DBundleDir=" in script
 
 

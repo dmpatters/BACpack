@@ -135,10 +135,13 @@ class ProxyMixin:
                 set_reliability(obj, "configuration-error")
                 return error_text(array)
             array = None
+        # Reliability before the value: a Present_Value change queues the
+        # alarm evaluation, and bacpypes3 records no further change once one
+        # is queued, so a recovery set after it left the object in FAULT.
+        set_reliability(obj, "no-fault-detected")
         try:
             mirror(obj, value, array)
         except Exception as exc:
             set_reliability(obj, "configuration-error")
             return LOCAL_REFUSED.format(error_text(exc))
-        set_reliability(obj, "no-fault-detected")
         return None

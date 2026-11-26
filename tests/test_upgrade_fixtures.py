@@ -81,7 +81,7 @@ def _client(migrated: Migrated):
         return FakeDeviceProcess(make_session_factory(make_engine(db_path)), device_id)
 
     app = create_app(db_path=str(migrated.db_path), process_factory=factory)
-    return TestClient(app, base_url="http://testserver", headers={"Origin": "http://testserver"})
+    return TestClient(app, base_url="http://127.0.0.1", headers={"Origin": "http://127.0.0.1"})
 
 
 @by_set

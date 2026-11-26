@@ -5,6 +5,7 @@ lives in object_builder.py.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 
@@ -19,6 +20,7 @@ from bacpypes3.apdu import (
     AtomicWriteFileACK,
     AtomicWriteFileRequest,
     ChangeListError,
+    ConfirmedEventNotificationRequest,
     DeviceCommunicationControlRequest,
     GetEventInformationACK,
     GetEventInformationRequest,
@@ -29,6 +31,7 @@ from bacpypes3.apdu import (
     RemoveListElementRequest,
     SimpleAckPDU,
     TimeSynchronizationRequest,
+    UnconfirmedEventNotificationRequest,
     UTCTimeSynchronizationRequest,
     WritePropertyMultipleError,
     WritePropertyMultipleRequest,
@@ -52,7 +55,7 @@ from bacpypes3.basetypes import (
     ResultFlags,
 )
 from bacpypes3.constructeddata import Array, List, ListOf, SequenceOf
-from bacpypes3.errors import DecodingError, ExecutionError, InvalidTag, ObjectError
+from bacpypes3.errors import DecodingError, ExecutionError, InvalidTag, ObjectError, OutOfResources
 from bacpypes3.primitivedata import TagClass, TagNumber, Unsigned
 from bacpypes3.service.object import read_property_to_result_element
 
@@ -73,6 +76,11 @@ from .traffic import TrafficLog, object_id_text
 from .trending import trim_devices_to_caps
 
 logger = logging.getLogger(__name__)
+
+# Requests that may wait for the password check (the one being checked is not
+# counted); the next is refused at once so a flood can't delay a genuine one.
+MAX_PASSWORD_WAITERS = 10
+PASSWORD_REFUSAL_LOG_SECONDS = 60.0
 
 # Reply size caps for AtomicReadFile and ReadRange:
 # bacpypes3's ServerSSM aborts a reply bigger than the client accepts instead
@@ -229,6 +237,9 @@ class LoggingApplication(Application):
     # one at a time, and DeviceWatch holds live reloads while a restore applies.
     _reinitialize_lock: Optional[asyncio.Lock] = None
     _password_lock: Optional[asyncio.Lock] = None
+    _password_waiting: int = 0
+    _password_refused: int = 0
+    _password_refusal_timer: Optional[asyncio.TimerHandle] = None
     applying_restore: bool = False
 
     def get_services_supported(self):
@@ -325,6 +336,18 @@ class LoggingApplication(Application):
         # upstream compares it to 0 and fails, and 0 is its "permanent".
         if apdu.lifetime is None and apdu.issueConfirmedNotifications is not None:
             apdu.lifetime = 0
+        # 13.14.1: a Lifetime needs the flag. Upstream would make it unconfirmed.
+        if apdu.lifetime is not None and apdu.issueConfirmedNotifications is None:
+            raise ExecutionError(errorClass="services", errorCode="missingRequiredParameter")
+        # Upstream's renewal changes only the lifetime; the flag may differ.
+        if apdu.issueConfirmedNotifications is not None:
+            bacpypes3_compat.set_cov_subscription_confirmed(
+                self,
+                apdu.pduSource,
+                apdu.subscriberProcessIdentifier,
+                apdu.monitoredObjectIdentifier,
+                apdu.issueConfirmedNotifications,
+            )
         await super().do_SubscribeCOVRequest(apdu)
 
     def cov_notification(self, cov, apdu) -> None:
@@ -671,10 +694,10 @@ class LoggingApplication(Application):
         process: they set process_status="reinitializing", _serve_device's
         stop check exits cleanly, and the parent's health check respawns it.
         """
-        self.traffic_log.add(
-            "reinitialize-device", f"{apdu.pduSource} -> {apdu.reinitializedStateOfDevice}"
-        )
-        async with self._password_order_lock():
+        async with self._password_turn():
+            self.traffic_log.add(
+                "reinitialize-device", f"{apdu.pduSource} -> {apdu.reinitializedStateOfDevice}"
+            )
             await self._require_bacnet_password(apdu, "ReinitializeDevice")
             state = apdu.reinitializedStateOfDevice.attr if apdu.reinitializedStateOfDevice is not None else None
             if self._reinitialize_lock is None:
@@ -687,18 +710,59 @@ class LoggingApplication(Application):
         apply. The check awaits worker threads, so without it two requests
         could be applied out of order, and a flood of wrong passwords would
         run scrypt on every executor thread at once. Taken before
-        _reinitialize_lock, never inside it, so a bad password cannot hold
-        that lock. Created on first use, inside the loop."""
+        _reinitialize_lock, never inside it. Created on first use, inside the
+        loop."""
         if self._password_lock is None:
             self._password_lock = asyncio.Lock()
         return self._password_lock
+
+    @contextlib.asynccontextmanager
+    async def _password_turn(self):
+        """A turn at _password_order_lock. With MAX_PASSWORD_WAITERS requests
+        already waiting, the request is refused at once with an Abort (out of
+        resources), before any database read or hash check."""
+        if self._password_waiting >= MAX_PASSWORD_WAITERS:
+            self._note_password_refusal()
+            raise OutOfResources("too many requests waiting for the password check")
+        lock = self._password_order_lock()
+        self._password_waiting += 1
+        try:
+            await lock.acquire()
+        finally:
+            self._password_waiting -= 1
+        try:
+            yield
+        finally:
+            lock.release()
+
+    def _note_password_refusal(self) -> None:
+        """Logs the refusals once a minute, with their count, not per packet:
+        the first at once, the rest when its minute ends, so a burst that
+        stops is still counted in full."""
+        if self._password_refusal_timer is None:
+            security_log.bacnet_password_queue_full(1)
+            self._start_refusal_window()
+        else:
+            self._password_refused += 1
+
+    def _start_refusal_window(self) -> None:
+        self._password_refusal_timer = asyncio.get_running_loop().call_later(
+            PASSWORD_REFUSAL_LOG_SECONDS, self._end_refusal_window
+        )
+
+    def _end_refusal_window(self) -> None:
+        self._password_refusal_timer = None
+        if self._password_refused:
+            security_log.bacnet_password_queue_full(self._password_refused)
+            self._password_refused = 0
+            self._start_refusal_window()
 
     async def _require_bacnet_password(self, apdu, service: str) -> None:
         """The device's optional DCC/ReinitializeDevice password. Read from
         SQLite on each request, so a change in the web UI applies at once; the
         read and the scrypt check run in worker threads, and before the
         reinitialize lock, so a bad password neither stalls the loop nor holds
-        the lock."""
+        that lock."""
         if self.session_factory is None:
             return
         expected = await asyncio.to_thread(self._stored_bacnet_password_hash)
@@ -910,10 +974,10 @@ class LoggingApplication(Application):
         """DM-DCC-B. bacpypes3's own DeviceCommunicationControlServices would
         crash on Disable (it writes a nonexistent self.smap).
         """
-        self.traffic_log.add(
-            "device-communication-control", f"{apdu.pduSource} -> {apdu.enableDisable}"
-        )
-        async with self._password_order_lock():
+        async with self._password_turn():
+            self.traffic_log.add(
+                "device-communication-control", f"{apdu.pduSource} -> {apdu.enableDisable}"
+            )
             await self._require_bacnet_password(apdu, "DeviceCommunicationControl")
             if apdu.enableDisable is None:
                 raise ExecutionError(errorClass="services", errorCode="missingRequiredParameter")
@@ -1009,5 +1073,11 @@ class LoggingApplication(Application):
             future = asyncio.get_running_loop().create_future()
             future.set_result(None)
             return future
+        if isinstance(apdu, (ConfirmedEventNotificationRequest, UnconfirmedEventNotificationRequest)):
+            self.traffic_log.add(
+                "event-notification",
+                f"-> {bacpypes3_compat.address_text(apdu.pduDestination)} "
+                f"obj {object_id_text(apdu.eventObjectIdentifier)} to {apdu.toState}",
+            )
         return super().request(apdu)
 

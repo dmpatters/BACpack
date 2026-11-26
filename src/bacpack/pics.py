@@ -19,6 +19,10 @@ from .objects.network_port import build_network_port_object
 
 STANDARD_TYPES: tuple[str, ...] = tuple(object_types_supported())
 
+SUMMARY = "Protocol Implementation Conformance Statement, laid out per ASHRAE 135 Annex A (the PICS form)."
+# For readers of the repository's file only: the web page leaves it out.
+EDITOR_NOTE = " Generated from the code by `scripts/make_pics.py`; do not edit by hand."
+
 _COMMANDABLE_DEFAULT = {"analog": "0.0", "binary": "inactive", "multi": "1"}
 
 # An unsaved row reads None, not the column default, and the builders need
@@ -156,10 +160,11 @@ WRITE_CONDITIONS: dict[tuple[str, str], str] = {
     },
     **{
         ("schedule", attr): _BACNET_WRITABLE
-        for attr in (
-            "weeklySchedule", "exceptionSchedule", "effectivePeriod",
-            "scheduleDefault", "priorityForWriting", "listOfObjectPropertyReferences",
-        )
+        for attr in ("effectivePeriod", "scheduleDefault", "priorityForWriting", "listOfObjectPropertyReferences")
+    },
+    **{
+        ("schedule", attr): f"{_BACNET_WRITABLE}; times to the minute (seconds or hundredths are refused)"
+        for attr in ("weeklySchedule", "exceptionSchedule")
     },
     ("calendar", "dateList"): _BACNET_WRITABLE,
     ("file", "fileSize"): "only to 0, and only while a restore is in progress (a client zeroes the file first)",
@@ -401,8 +406,7 @@ def render_pics() -> str:
     event loops), so not callable from a running loop."""
     parts = [
         "# BACpack PICS",
-        "Protocol Implementation Conformance Statement, laid out per ASHRAE 135 Annex A (the PICS"
-        " form). Generated from the code by `scripts/make_pics.py`; do not edit by hand.",
+        SUMMARY + EDITOR_NOTE,
         render_product(),
         render_profile(),
         render_services(),

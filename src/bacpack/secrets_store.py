@@ -22,6 +22,7 @@ from typing import Any, Optional
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import JSON, String, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.types import TypeDecorator
 
 from .data_files import hand_to_owner, owner_for
@@ -106,21 +107,46 @@ def ensure_key(data_dir: Path) -> bool:
     path.parent.mkdir(parents=True, exist_ok=True)
     # mkstemp makes the file 0600; linking it into place is atomic and fails
     # rather than replaces if another process got there first.
+    key = Fernet.generate_key()
+    owner = owner_for(path.parent)
     fd, temp_name = tempfile.mkstemp(prefix=KEY_FILE + ".", suffix=".tmp", dir=path.parent)
     temp = Path(temp_name)
     try:
         with os.fdopen(fd, "wb") as handle:
-            handle.write(Fernet.generate_key())
+            handle.write(key)
         if os.name != "nt":
             os.chmod(temp, 0o600)
-        hand_to_owner(temp, owner_for(path.parent))
+        hand_to_owner(temp, owner)
         try:
             os.link(temp, path)
         except FileExistsError:
             return False
+        except OSError:
+            # FAT/exFAT, some SMB shares and container bind mounts refuse hard
+            # links. Exclusive create still never replaces another process's
+            # key; a reader in the moment before the write sees an invalid
+            # key, which counts as missing and isn't cached.
+            if not _create_in_place(path, key, owner):
+                return False
     finally:
         temp.unlink(missing_ok=True)
     _fernets.pop(data_dir, None)
+    return True
+
+
+def _create_in_place(path: Path, key: bytes, owner) -> bool:
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0), 0o600)
+    except FileExistsError:
+        return False
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(key)
+        hand_to_owner(path, owner)
+    except BaseException:
+        # A half-written key would be "unusable" on every later start.
+        path.unlink(missing_ok=True)
+        raise
     return True
 
 
@@ -251,7 +277,10 @@ def rewrite_plaintext(engine: Engine) -> tuple[int, int]:
     write lock taken, before the rows are read again: a device process may
     commit between a read and a first write, which fails at once with
     "database is locked" instead of waiting. An unusable key leaves the plain
-    rows as they are, with one warning, so a start never fails over it."""
+    rows as they are, with one warning, so a start never fails over it. So does
+    a file a device process keeps locked past the busy timeout (BEGIN IMMEDIATE
+    takes the write lock on both attached files): the rows stay plain until the
+    next start. Both cases return (0, 0)."""
     data_dir = data_dir_of(engine)
     with engine.connect() as connection:
         rows = connection.execute(_SELECT_CREDENTIALS).all()
@@ -274,6 +303,16 @@ def rewrite_plaintext(engine: Engine) -> tuple[int, int]:
                 "connector credentials are still stored as plain text: the encryption key file %s is unusable. "
                 "Restore it, or delete it and start again",
                 problem.key_file,
+            )
+            return 0, 0
+        except OperationalError as exc:
+            message = str(getattr(exc, "orig", exc)).lower()
+            if "locked" not in message and "busy" not in message:
+                raise
+            logger.warning(
+                "could not encrypt the plain-text connector credentials (the database is busy), "
+                "will retry on the next start: %s",
+                exc,
             )
             return 0, 0
         with engine.connect() as connection:

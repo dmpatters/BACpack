@@ -6,7 +6,7 @@ Simulated BACnet devices to test your BMS against. BACpack runs BACnet/IP device
 
 ![The Devices page with the sample building's four devices running](docs/images/devices-page.png)
 
-Current release: **`1.0.0`** (see [CHANGELOG.md](CHANGELOG.md)). [MIT licensed](LICENSE). Every device meets the B-BC profile. The About page lists each BIBB, and [PICS.md](PICS.md) is the conformance statement.
+Current release: **`1.0.1`** (see [CHANGELOG.md](CHANGELOG.md)). [MIT licensed](LICENSE). Every device meets the B-BC profile. The About page lists each BIBB, and [PICS.md](PICS.md) is the conformance statement.
 
 BACpack has no redundancy or high availability, so plan around that if you run it in a live building. Run it on a trusted network.
 
@@ -36,6 +36,8 @@ To build your own, use **New device** or **Import EDE** on the Devices page, or 
 - Connectors (optional): HTTP pull connectors, and BACnet connectors that read, write or proxy points on other devices.
 - Watching: live values and priority arrays, traffic and log views, trend charts, and a BACnet client tab.
 - Config as files: export and import all devices and connectors as JSON, or one device's objects as a CSV point list. Passwords, tokens and header values are never in the file. A connector's URL is, as typed, so keep credentials in its auth fields or headers.
+
+[How BACpack compares](docs/comparison.md) with other BACnet device simulators.
 
 ## Using it as a gateway
 

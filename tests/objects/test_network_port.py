@@ -106,6 +106,27 @@ def test_validate_network_settings_accepts_valid_bbmd_peers():
     )
 
 
+@pytest.mark.parametrize("port", ["0", "65536", "99999"])
+@pytest.mark.parametrize(
+    "field",
+    [
+        lambda p: {"bind_address": f"192.168.1.50/24:{p}"},
+        lambda p: {"bind_address": "192.168.1.50/24", "network_role": "foreign", "foreign_bbmd": f"192.168.2.5:{p}"},
+        lambda p: {"bind_address": "192.168.1.50/24", "network_role": "bbmd", "bbmd_peers": [f"192.168.2.5:{p}"]},
+    ],
+    ids=["bind_address", "foreign_bbmd", "bbmd_peer"],
+)
+def test_validate_network_settings_refuses_a_port_outside_1_to_65535(field, port):
+    # :0 would bind a random port no client can find; :99999 fails only at start.
+    with pytest.raises(ValueError, match="port .* 1-65535"):
+        validate_network_settings(**field(port))
+
+
+def test_validate_network_settings_accepts_the_edge_ports():
+    validate_network_settings("192.168.1.50/24:1")
+    validate_network_settings("192.168.1.50/24:65535", network_role="foreign", foreign_bbmd="192.168.2.5:65535")
+
+
 def test_validate_network_settings_rejects_bad_bbmd_peer():
     with pytest.raises(ValueError, match="invalid bbmd_peers entry"):
         validate_network_settings(

@@ -325,15 +325,20 @@ export const authApi = {
 export const loginSettingsApi = {
   get: () => api.get<LoginSettings>("/api/settings/login"),
   // A password change needs current_password; a rename alone does not.
-  update: (body: { username?: string; new_password?: string; current_password?: string }) =>
+  // revoke_api_keys goes with a new password.
+  update: (body: { username?: string; new_password?: string; current_password?: string; revoke_api_keys?: boolean }) =>
     api.put<LoginSettings>("/api/settings/login", body),
-  enable: (body: { username: string; password: string }) => api.post<LoginSettings>("/api/settings/login/enable", body),
+  // revoke_api_keys revokes every existing key in the same save.
+  enable: (body: { username: string; password: string; revoke_api_keys?: boolean }) =>
+    api.post<LoginSettings>("/api/settings/login/enable", body),
   disable: (body: { current_password: string }) => api.post<LoginSettings>("/api/settings/login/disable", body),
 };
 
 export const apiKeysApi = {
   list: () => api.get<ApiKeyInfo[]>("/api/settings/api-keys"),
-  create: (name: string) => api.post<NewApiKey>("/api/settings/api-keys", { name }),
+  // current_password is needed while the login is on.
+  create: (name: string, currentPassword?: string) =>
+    api.post<NewApiKey>("/api/settings/api-keys", { name, current_password: currentPassword }),
   revoke: (id: number) => api.del<void>(`/api/settings/api-keys/${id}`),
 };
 
